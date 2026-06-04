@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
@@ -6,23 +6,32 @@ import {
   Pressable,
   SafeAreaView,
   ScrollView,
+  Modal,
 } from "react-native";
 import { signOut } from "firebase/auth";
 import { auth } from "../services/firebase";
 import { useNavigation, useRoute } from "@react-navigation/native";
 import { generateWeeklySchedule } from "../algorithms/weeklySchedule";
 import { getTabletVisual } from "../algorithms/tabletDisplay";
-
+import { getWarningMessages } from "../algorithms/warningMessages";
 
 export default function HomeScreen() {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
+
+  const [infoModalVisible, setInfoModalVisible] = useState(false);
 
   const currentInr = route.params?.currentInr;
   const targetLabel = route.params?.targetLabel;
   const suggestedWeeklyDoseMg = route.params?.suggestedWeeklyDoseMg;
   const action = route.params?.action;
   const warnings = route.params?.warnings;
+  const warningMessages = getWarningMessages(warnings);
+  const highestWarning =
+    warningMessages.find((w) => w.level === "critical") ||
+    warningMessages.find((w) => w.level === "danger") ||
+    warningMessages.find((w) => w.level === "warning") ||
+    warningMessages.find((w) => w.level === "info");
   const nextCheck = route.params?.nextCheck;
   const weeklySchedule =
     suggestedWeeklyDoseMg != null
@@ -33,9 +42,15 @@ export default function HomeScreen() {
   const todayIndex = jsDay === 0 ? 6 : jsDay - 1;
   const todayDoseMg = weeklySchedule?.[todayIndex]?.dose ?? 0;
   const todayVisual = getTabletVisual(todayDoseMg, 5);
-  const isStopMode = typeof action === "string" && action.includes("İlaç STOP");
+  const isStopMode =
+    typeof action === "string" &&
+    (action.includes("İlaç STOP") || action.includes("bırakın"));
   const stopInfo = isStopMode
-    ? action.replace("İlaç STOP,", "").trim()
+    ? action
+        .replace("İlaç STOP,", "")
+        .replace("İlacı", "")
+        .replace("boyunca bırakın", "bekleyin")
+        .trim()
     : "";
 
   const today = new Date();
@@ -56,6 +71,33 @@ export default function HomeScreen() {
         <View style={styles.container}>
           <Text style={styles.headerTitle}>INR Takip</Text>
           <Text style={styles.headerSubtitle}>Ana Sayfa</Text>
+          {highestWarning && (
+            <View
+              style={[
+                styles.warningBanner,
+                highestWarning.level === "critical" &&
+                  styles.warningBannerCritical,
+                highestWarning.level === "danger" &&
+                  styles.warningBannerDanger,
+                highestWarning.level === "warning" &&
+                  styles.warningBannerWarning,
+                highestWarning.level === "info" &&
+                  styles.warningBannerInfo,
+              ]}
+            >
+              <View style={styles.warningHeader}>
+                <Text style={styles.warningIcon}>⚠️</Text>
+
+                <Text style={styles.warningTitle}>
+                  {highestWarning.title}
+                </Text>
+              </View>
+
+              <Text style={styles.warningText}>
+                {highestWarning.shortText}
+              </Text>
+            </View>
+          )}
 
           <View style={styles.card}>
             <Text style={styles.cardTitle}>İlaç Dozu Güncellemesi</Text>
@@ -71,34 +113,44 @@ export default function HomeScreen() {
               Haftalık doz dağılımı burada gösterilecek
             </Text>
 
-            <View style={styles.todayDoseBox}>
+            <View style={[styles.todayDoseBox, isStopMode && styles.todayDoseBoxStop, ]} >
               <View style={styles.todayDoseLeft}>
                 <Text style={styles.todayDate}>{todayDayLabel}</Text>
                 <Text style={styles.todayTitle}>Bugünün{"\n"}Dozu</Text>
               </View>
 
               <View style={styles.todayDoseRight}>
-                <Text style={styles.todayDoseText}>
-                  {todayVisual.tabletCount} tablet | {todayVisual.mg} mg
-                </Text>
+                {isStopMode ? (
+                  <>
+                    <Text style={styles.stopTitle}>İLAÇ STOP</Text>
+                    <Text style={styles.stopInfo}>{stopInfo}</Text>
+                    <Text style={styles.stopCheck}>{nextCheck}</Text>
+                  </>
+                ) : (
+                  <>
+                    <Text style={styles.todayDoseText}>
+                      {todayVisual.tabletCount} tablet | {todayVisual.mg} mg
+                    </Text>
 
-                <View style={styles.tabletsRow}>
-                  {todayVisual.slots.map((slot, index) => (
-                    <View
-                      key={index}
-                      style={[
-                        styles.tabletBase,
-                        slot === "full" && styles.fullTablet,
-                        slot === "half" && styles.halfTablet,
-                        slot === "empty" && styles.emptyTablet,
-                      ]}
-                    >
-                      <View style={styles.tabletVerticalLine} />
-                      <View style={styles.tabletHorizontalLine} />
-                      {slot === "half" && <View style={styles.halfTabletCover} />}
+                    <View style={styles.tabletsRow}>
+                      {todayVisual.slots.map((slot, index) => (
+                        <View
+                          key={index}
+                          style={[
+                            styles.tabletBase,
+                            slot === "full" && styles.fullTablet,
+                            slot === "half" && styles.halfTablet,
+                            slot === "empty" && styles.emptyTablet,
+                          ]}
+                        >
+                          <View style={styles.tabletVerticalLine} />
+                          <View style={styles.tabletHorizontalLine} />
+                          {slot === "half" && <View style={styles.halfTabletCover} />}
+                        </View>
+                      ))}
                     </View>
-                  ))}
-                </View>
+                  </>
+                )}
               </View>
             </View>
 
@@ -162,18 +214,31 @@ export default function HomeScreen() {
               </View>
 
               <View style={styles.resultBoxHalf}>
-                <Text style={styles.resultTitle}>Sonuç</Text>
+                <View style={styles.resultHeader}>
+                  <Text style={styles.resultTitle}>Tedavi Önerisi</Text>
+
+                  <Pressable onPress={() => setInfoModalVisible(true)}>
+                    <Text style={styles.infoIcon}>ⓘ</Text>
+                  </Pressable>
+                </View>
 
                 {action ? (
                   <>
-                    <Text style={styles.resultText}>
-                      Yeni Doz: {suggestedWeeklyDoseMg} mg
+                    <Text style={styles.resultLabel}>
+                      Yeni Haftalık Doz
                     </Text>
-                    <Text style={styles.resultText}>Aksiyon: {action}</Text>
-                    <Text style={styles.resultText}>
-                      Uyarılar: {warnings?.join(", ") || "-"}
+
+                    <Text style={styles.resultDose}>
+                      {suggestedWeeklyDoseMg} mg
                     </Text>
-                    <Text style={styles.resultText}>Kontrol: {nextCheck}</Text>
+
+                    <Text style={styles.resultLabel}>
+                      Sonraki Kontrol
+                    </Text>
+
+                    <Text style={styles.resultCheck}>
+                      {nextCheck}
+                    </Text>
                   </>
                 ) : (
                   <Text style={styles.resultPlaceholder}>
@@ -206,6 +271,41 @@ export default function HomeScreen() {
           </Pressable>
         </View>
       </ScrollView>
+    <Modal
+      visible={infoModalVisible}
+      transparent
+      animationType="fade"
+      onRequestClose={() => setInfoModalVisible(false)}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContent}>
+          <Text style={styles.modalTitle}>Tedavi Detayı</Text>
+
+          <Text style={styles.modalText}>
+            Yeni Doz: {suggestedWeeklyDoseMg} mg
+          </Text>
+
+          <Text style={styles.modalText}>
+            Aksiyon: {action}
+          </Text>
+
+          <Text style={styles.modalText}>
+            Uyarılar: {warnings?.join(", ") || "-"}
+          </Text>
+
+          <Text style={styles.modalText}>
+            Kontrol: {nextCheck}
+          </Text>
+
+          <Pressable
+            style={styles.modalButton}
+            onPress={() => setInfoModalVisible(false)}
+          >
+            <Text style={styles.modalButtonText}>Kapat</Text>
+          </Pressable>
+        </View>
+      </View>
+    </Modal>
     </SafeAreaView>
   );
 }
@@ -234,7 +334,7 @@ const styles = StyleSheet.create({
   },
   card: {
     backgroundColor: "#ffffff",
-    borderRadius: 18,
+    borderRadius: 22,
     padding: 18,
     shadowColor: "#000",
     shadowOpacity: 0.08,
@@ -262,7 +362,7 @@ const styles = StyleSheet.create({
   dayRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginTop: 6,
+    marginTop: 14,
     gap: 6,
   },
   dayBox: {
@@ -363,10 +463,10 @@ const styles = StyleSheet.create({
     minHeight: 190,
   },
   resultTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "700",
     color: "#2f5f73",
-    marginBottom: 10,
+    marginRight: 4,
   },
   resultText: {
     fontSize: 14,
@@ -383,7 +483,7 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     paddingVertical: 20,
     paddingHorizontal: 22,
-    marginBottom: 6,
+    marginBottom: 10,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
@@ -496,5 +596,150 @@ const styles = StyleSheet.create({
     width: "100%",
     backgroundColor: "#2F667C",
     zIndex: 2,
+  },
+  todayDoseBoxStop: {
+    backgroundColor: "#E7D7D7",
+    borderColor: "#9B4A4A",
+  },
+
+  stopTitle: {
+    fontSize: 20,
+    fontWeight: "800",
+    color: "#8A2F2F",
+    marginBottom: 8,
+    textAlign: "center",
+  },
+
+  stopInfo: {
+    fontSize: 17,
+    fontWeight: "700",
+    color: "#8A2F2F",
+    marginBottom: 6,
+    textAlign: "center",
+  },
+
+  stopCheck: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#5F2A2A",
+    textAlign: "center",
+  },
+
+  warningBanner: {
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 6,
+  },
+
+  warningBannerCritical: {
+    backgroundColor: "#FDE2E2",
+  },
+
+  warningBannerDanger: {
+    backgroundColor: "#FFE8CC",
+  },
+
+  warningBannerWarning: {
+    backgroundColor: "#FFF4CC",
+  },
+
+  warningBannerInfo: {
+    backgroundColor: "#E5F3FF",
+  },
+
+  warningTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    marginBottom: 4,
+    color: "#1F2937",
+  },
+
+  warningText: {
+    fontSize: 14,
+    color: "#374151",
+  },
+
+  warningHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 4,
+  },
+
+  warningIcon: {
+    fontSize: 22,
+    marginRight: 8,
+  },
+
+  resultHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 14,
+  },
+
+  infoIcon: {
+    fontSize: 16,
+    color: "#2f5f73",
+    marginLeft: 6,
+  },
+
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 24,
+  },
+
+  modalContent: {
+    width: "100%",
+    backgroundColor: "#fff",
+    borderRadius: 20,
+    padding: 22,
+  },
+
+  modalTitle: {
+    fontSize: 22,
+    fontWeight: "700",
+    color: "#2f5f73",
+    marginBottom: 16,
+  },
+
+  modalText: {
+    fontSize: 16,
+    color: "#374151",
+    marginBottom: 12,
+  },
+
+  modalButton: {
+    marginTop: 12,
+    backgroundColor: "#2f5f73",
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+
+  modalButtonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+
+  resultLabel: {
+    fontSize: 13,
+    color: "#6b7280",
+    marginBottom: 4,
+  },
+
+  resultDose: {
+    fontSize: 22,
+    fontWeight: "600",
+    color: "#2f5f73",
+    marginBottom: 16,
+  },
+
+  resultCheck: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#111827",
   },
 });

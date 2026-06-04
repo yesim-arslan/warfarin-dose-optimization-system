@@ -40,7 +40,7 @@ export function calculateDose(input: DoseInput): DoseResult {
     } else if (currentInr < 4.0) {
       suggestedWeeklyDoseMg = weeklyDoseMg - (1 / 14) * weeklyDoseMg;
       action = "Haftalık toplam doz azaltılmalı ve günlere dağıtılmalı";
-      warnings = [];
+      warnings = ["U-3"];
       nextCheck = "1 ay sonra";
     } else if (currentInr < 5.0) {
       suggestedWeeklyDoseMg = weeklyDoseMg - (1 / 7) * weeklyDoseMg;
@@ -78,7 +78,7 @@ export function calculateDose(input: DoseInput): DoseResult {
     } else if (currentInr > target.max && currentInr < 4.0) {
       suggestedWeeklyDoseMg = weeklyDoseMg - weeklyDoseMg / 14;
       action = "Haftalık toplam doz azaltılmalı";
-      warnings = [];
+      warnings = ["U-3"];
       nextCheck = "1 ay sonra";
     } else if (currentInr >= 4.0 && currentInr < 5.0) {
       suggestedWeeklyDoseMg = weeklyDoseMg - weeklyDoseMg / 7;
