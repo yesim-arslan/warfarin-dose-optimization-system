@@ -1,9 +1,6 @@
-export type TherapyIndication =
-  | "AF"
-  | "MECH_VALVE_SINGLE"
-  | "MECH_VALVE_DOUBLE"
-  | "VTE"
-  | "OTHER";
+import { Indication } from "../algorithms/doseTypes";
+
+export type TherapyIndication = Indication;
 
 export type UserProfile = {
   uid: string;
@@ -13,13 +10,15 @@ export type UserProfile = {
   targetInrMin?: number;
   targetInrMax?: number;
   currentWeeklyDoseMg?: number;
+  themeMode?: "light" | "dark";
+  requiresInitialIndication?: boolean;
 };
 
 export type InrRecord = {
   id?: string;
   uid: string;
   inr: number;
-  measuredAt: string; // ISO date string (YYYY-MM-DD)
+  measuredAt: string; // ISO date/time string
   createdAt: any; // serverTimestamp
 };
 

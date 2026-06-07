@@ -1,5 +1,6 @@
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  Animated,
   View,
   Text,
   StyleSheet,
@@ -8,31 +9,314 @@ import {
   ScrollView,
   Modal,
 } from "react-native";
-import { signOut } from "firebase/auth";
-import { auth } from "../services/firebase";
-import { useNavigation, useRoute } from "@react-navigation/native";
+import { useFocusEffect, useNavigation, useRoute } from "@react-navigation/native";
 import { generateWeeklySchedule } from "../algorithms/weeklySchedule";
 import { getTabletVisual } from "../algorithms/tabletDisplay";
 import { getWarningMessages } from "../algorithms/warningMessages";
+import { calculateDose } from "../algorithms/doseCalculator";
+import { AppThemeColors, ThemeMode, useTheme } from "../theme/ThemeContext";
+import { auth } from "../services/firebase";
+import { getLatestInrRecord, getUserProfile } from "../services/firestore";
+import { InrRecord, UserProfile } from "../types/models";
+import { consumeHomeMenuOpenRequest } from "../navigation/menuReturn";
+
+const parseNextCheckInDays = (nextCheck?: string) => {
+  if (!nextCheck) {
+    return null;
+  }
+
+  const normalized = nextCheck.toLocaleLowerCase("tr-TR");
+  const dayMatch = normalized.match(/(\d+)\s*gün/);
+  const ordinalDayMatch = normalized.match(/(\d+)\.\s*gün/);
+
+  if (ordinalDayMatch) {
+    return Number(ordinalDayMatch[1]);
+  }
+
+  if (dayMatch) {
+    return Number(dayMatch[1]);
+  }
+
+  if (normalized.includes("hafta")) {
+    return 7;
+  }
+
+  if (normalized.includes("ay")) {
+    return 30;
+  }
+
+  return null;
+};
+
+const addDays = (date: Date, days: number) => {
+  const nextDate = new Date(date);
+  nextDate.setDate(nextDate.getDate() + days);
+  return nextDate;
+};
+
+const startOfDay = (date: Date) =>
+  new Date(date.getFullYear(), date.getMonth(), date.getDate());
+
+const getControlCountdownLabel = (
+  measuredAt?: string,
+  nextCheck?: string
+) => {
+  const nextCheckInDays = parseNextCheckInDays(nextCheck);
+
+  if (!measuredAt || nextCheckInDays == null) {
+    return "Henüz ölçüm yok";
+  }
+
+  const measuredDate = new Date(measuredAt);
+
+  if (Number.isNaN(measuredDate.getTime())) {
+    return "Henüz ölçüm yok";
+  }
+
+  const controlDate = startOfDay(addDays(measuredDate, nextCheckInDays));
+  const today = startOfDay(new Date());
+  const remainingDays = Math.ceil(
+    (controlDate.getTime() - today.getTime()) / 86400000
+  );
+
+  if (remainingDays < 0) {
+    return "Kontrol zamanı geçti";
+  }
+
+  if (remainingDays === 0) {
+    return "Bugün kontrol günü";
+  }
+
+  return `${remainingDays} Gün Kaldı`;
+};
+
+type MenuIconType =
+  | "profile"
+  | "settings"
+  | "food"
+  | "drug"
+  | "warning"
+  | "privacy"
+  | "about"
+  | "help";
 
 export default function HomeScreen() {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
+  const { colors, mode } = useTheme();
+  const styles = createStyles(colors, mode);
 
   const [infoModalVisible, setInfoModalVisible] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [menuVisible, setMenuVisible] = useState(false);
+  const menuProgress = useRef(new Animated.Value(0)).current;
+  const [latestInrRecord, setLatestInrRecord] = useState<InrRecord | null>(
+    null
+  );
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
 
-  const currentInr = route.params?.currentInr;
-  const targetLabel = route.params?.targetLabel;
-  const suggestedWeeklyDoseMg = route.params?.suggestedWeeklyDoseMg;
-  const action = route.params?.action;
-  const warnings = route.params?.warnings;
+  const openMenu = () => {
+    setMenuVisible(true);
+    setMenuOpen(true);
+    Animated.timing(menuProgress, {
+      toValue: 1,
+      duration: 180,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const closeMenu = (afterClose?: () => void) => {
+    Animated.timing(menuProgress, {
+      toValue: 0,
+      duration: 160,
+      useNativeDriver: true,
+    }).start(({ finished }) => {
+      if (!finished) {
+        return;
+      }
+
+      setMenuOpen(false);
+      setMenuVisible(false);
+      afterClose?.();
+    });
+  };
+
+  useFocusEffect(
+    useCallback(() => {
+      if (consumeHomeMenuOpenRequest() && !menuOpen) {
+        requestAnimationFrame(openMenu);
+      }
+
+      return undefined;
+    }, [menuOpen])
+  );
+
+  const menuPanelAnimatedStyle = {
+    opacity: menuProgress,
+    transform: [
+      {
+        translateX: menuProgress.interpolate({
+          inputRange: [0, 1],
+          outputRange: [36, 0],
+        }),
+      },
+    ],
+  };
+
+  const renderMenuIcon = (type: MenuIconType) => {
+    if (type === "profile") {
+      return (
+        <View style={styles.menuActionIconFrame}>
+          <View style={styles.profileIconHead} />
+          <View style={styles.profileIconBody} />
+        </View>
+      );
+    }
+
+    if (type === "settings") {
+      return (
+        <View style={styles.menuActionIconFrame}>
+          <Text style={styles.gearIconText}>⚙︎</Text>
+        </View>
+      );
+    }
+
+    if (type === "drug") {
+      return (
+        <View style={styles.menuActionIconFrame}>
+          <View style={styles.pillIcon}>
+            <View style={styles.pillDivider} />
+          </View>
+        </View>
+      );
+    }
+
+    if (type === "privacy") {
+      return (
+        <View style={styles.menuActionIconFrame}>
+          <View style={styles.lockIconShackle} />
+          <View style={styles.lockIconBody} />
+        </View>
+      );
+    }
+
+    if (type === "warning") {
+      return (
+        <View style={styles.menuActionIconFrame}>
+          <View style={styles.circleIcon}>
+            <Text style={styles.menuSymbolText}>!</Text>
+          </View>
+        </View>
+      );
+    }
+
+    if (type === "food") {
+      return (
+        <View style={styles.menuActionIconFrame}>
+          <View style={styles.foodIconCircle}>
+            <View style={styles.foodIconLeaf} />
+          </View>
+        </View>
+      );
+    }
+
+    if (type === "about") {
+      return (
+        <View style={styles.menuActionIconFrame}>
+          <View style={styles.circleIcon}>
+            <Text style={styles.menuSymbolText}>i</Text>
+          </View>
+        </View>
+      );
+    }
+
+    return (
+      <View style={styles.menuActionIconFrame}>
+        <View style={styles.circleIcon}>
+          <Text style={styles.menuSymbolText}>?</Text>
+        </View>
+      </View>
+    );
+  };
+
+  useEffect(() => {
+    let isActive = true;
+    const user = auth.currentUser;
+
+    if (!user) {
+      return;
+    }
+
+    const loadHomeData = async () => {
+      try {
+        const [record, profile] = await Promise.all([
+          route.params?.currentInr != null
+            ? Promise.resolve(null)
+            : getLatestInrRecord(user.uid),
+          getUserProfile(user.uid),
+        ]);
+
+        if (isActive) {
+          setUserProfile(profile);
+
+          if (record) {
+            setLatestInrRecord(record);
+          }
+        }
+      } catch (error) {
+        console.error(error);
+      }
+    };
+
+    loadHomeData();
+
+    return () => {
+      isActive = false;
+    };
+  }, [route.params?.currentInr]);
+
+  const currentInr = route.params?.currentInr ?? latestInrRecord?.inr;
+  const savedDoseResult = useMemo(() => {
+    if (
+      route.params?.currentInr != null ||
+      currentInr == null ||
+      !userProfile?.indication
+    ) {
+      return null;
+    }
+
+    return calculateDose({
+      indication: userProfile.indication,
+      currentInr,
+      weeklyDoseMg: userProfile?.currentWeeklyDoseMg ?? 35,
+    });
+  }, [
+    currentInr,
+    route.params?.currentInr,
+    userProfile?.currentWeeklyDoseMg,
+    userProfile?.indication,
+  ]);
+
+  const targetLabel = route.params?.targetLabel ?? savedDoseResult?.targetLabel;
+  const inrStatusLabel = targetLabel
+    ? `Hedef: ${targetLabel}`
+    : currentInr != null
+      ? "Lütfen INR takip nedeninizi seçiniz"
+      : "Henüz ölçüm yok";
+  const suggestedWeeklyDoseMg =
+    route.params?.suggestedWeeklyDoseMg ??
+    savedDoseResult?.suggestedWeeklyDoseMg;
+  const action = route.params?.action ?? savedDoseResult?.action;
+  const warnings = route.params?.warnings ?? savedDoseResult?.warnings;
   const warningMessages = getWarningMessages(warnings);
   const highestWarning =
     warningMessages.find((w) => w.level === "critical") ||
     warningMessages.find((w) => w.level === "danger") ||
     warningMessages.find((w) => w.level === "warning") ||
     warningMessages.find((w) => w.level === "info");
-  const nextCheck = route.params?.nextCheck;
+  const nextCheck = route.params?.nextCheck ?? savedDoseResult?.nextCheck;
+  const measuredAt = route.params?.measuredAt ?? latestInrRecord?.measuredAt;
+  const controlCountdownLabel = getControlCountdownLabel(measuredAt, nextCheck);
   const weeklySchedule =
     suggestedWeeklyDoseMg != null
       ? generateWeeklySchedule(suggestedWeeklyDoseMg)
@@ -69,7 +353,33 @@ export default function HomeScreen() {
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.container}>
-          <Text style={styles.headerTitle}>INR Takip</Text>
+          <View style={styles.headerRow}>
+            <Text style={styles.headerTitle}>INR Takip</Text>
+
+            <Pressable
+              style={styles.menuButton}
+              onPress={() => (menuOpen ? closeMenu() : openMenu())}
+            >
+              <View
+                style={[
+                  styles.menuLine,
+                  menuOpen && styles.menuLineOpen,
+                ]}
+              />
+              <View
+                style={[
+                  styles.menuLine,
+                  menuOpen && styles.menuLineOpen,
+                ]}
+              />
+              <View
+                style={[
+                  styles.menuLine,
+                  menuOpen && styles.menuLineOpen,
+                ]}
+              />
+            </Pressable>
+          </View>
           <Text style={styles.headerSubtitle}>Ana Sayfa</Text>
           {highestWarning && (
             <View
@@ -100,10 +410,12 @@ export default function HomeScreen() {
           )}
 
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>İlaç Dozu Güncellemesi</Text>
-            <Text style={styles.bigText}>17 Gün Kaldı</Text>
+            <Text style={styles.cardTitle}>Bir sonraki kontrole</Text>
+            <Text style={styles.bigText}>{controlCountdownLabel}</Text>
             <Text style={styles.helperText}>
-              Son güncelleme bilgisi burada görünecek
+              {nextCheck
+                ? `Önerilen kontrol: ${nextCheck}`
+                : "INR değeri girildiğinde kontrol zamanı hesaplanır"}
             </Text>
           </View>
 
@@ -113,21 +425,26 @@ export default function HomeScreen() {
               Haftalık doz dağılımı burada gösterilecek
             </Text>
 
-            <View style={[styles.todayDoseBox, isStopMode && styles.todayDoseBoxStop, ]} >
-              <View style={styles.todayDoseLeft}>
-                <Text style={styles.todayDate}>{todayDayLabel}</Text>
-                <Text style={styles.todayTitle}>Bugünün{"\n"}Dozu</Text>
-              </View>
-
-              <View style={styles.todayDoseRight}>
-                {isStopMode ? (
-                  <>
+            <View style={[styles.todayDoseBox, isStopMode && styles.todayDoseBoxStop]}>
+              {isStopMode ? (
+                <View style={styles.stopDoseContent}>
+                  <Text style={[styles.todayDate, styles.todayDateStop]}>
+                    {todayDayLabel}
+                  </Text>
+                  <View style={styles.stopTextGroup}>
                     <Text style={styles.stopTitle}>İLAÇ STOP</Text>
                     <Text style={styles.stopInfo}>{stopInfo}</Text>
                     <Text style={styles.stopCheck}>{nextCheck}</Text>
-                  </>
-                ) : (
-                  <>
+                  </View>
+                </View>
+              ) : (
+                <>
+                  <View style={styles.todayDoseLeft}>
+                    <Text style={styles.todayDate}>{todayDayLabel}</Text>
+                    <Text style={styles.todayTitle}>Bugünün{"\n"}Dozu</Text>
+                  </View>
+
+                  <View style={styles.todayDoseRight}>
                     <Text style={styles.todayDoseText}>
                       {todayVisual.tabletCount} tablet | {todayVisual.mg} mg
                     </Text>
@@ -149,9 +466,9 @@ export default function HomeScreen() {
                         </View>
                       ))}
                     </View>
-                  </>
-                )}
-              </View>
+                  </View>
+                </>
+              )}
             </View>
 
             <View style={styles.dayRow}>
@@ -160,6 +477,7 @@ export default function HomeScreen() {
                   <View key={`${item.day}-${index}`} style={styles.dayBox}>
                     <Text style={styles.dayName}>{item.day}</Text>
                     <Text style={styles.dayDose}>{item.dose}</Text>
+                    <Text style={styles.dayDoseUnit}>mg</Text>
                   </View>
                 ))
               ) : (
@@ -167,30 +485,37 @@ export default function HomeScreen() {
                   <View style={styles.dayBox}>
                     <Text style={styles.dayName}>Pzt</Text>
                     <Text style={styles.dayDose}>-</Text>
+                    <Text style={styles.dayDoseUnit}>mg</Text>
                   </View>
                   <View style={styles.dayBox}>
                     <Text style={styles.dayName}>Sal</Text>
                     <Text style={styles.dayDose}>-</Text>
+                    <Text style={styles.dayDoseUnit}>mg</Text>
                   </View>
                   <View style={styles.dayBox}>
                     <Text style={styles.dayName}>Çar</Text>
                     <Text style={styles.dayDose}>-</Text>
+                    <Text style={styles.dayDoseUnit}>mg</Text>
                   </View>
                   <View style={styles.dayBox}>
                     <Text style={styles.dayName}>Per</Text>
                     <Text style={styles.dayDose}>-</Text>
+                    <Text style={styles.dayDoseUnit}>mg</Text>
                   </View>
                   <View style={styles.dayBox}>
                     <Text style={styles.dayName}>Cum</Text>
                     <Text style={styles.dayDose}>-</Text>
+                    <Text style={styles.dayDoseUnit}>mg</Text>
                   </View>
                   <View style={styles.dayBox}>
                     <Text style={styles.dayName}>Cmt</Text>
                     <Text style={styles.dayDose}>-</Text>
+                    <Text style={styles.dayDoseUnit}>mg</Text>
                   </View>
                   <View style={styles.dayBox}>
                     <Text style={styles.dayName}>Paz</Text>
                     <Text style={styles.dayDose}>-</Text>
+                    <Text style={styles.dayDoseUnit}>mg</Text>
                   </View>
                 </>
               )}
@@ -209,8 +534,17 @@ export default function HomeScreen() {
                 </Text>
 
                 <Text style={styles.inrStatus}>
-                  {targetLabel ? `Hedef: ${targetLabel}` : "Henüz ölçüm yok"}
+                  {inrStatusLabel}
                 </Text>
+
+                <Pressable
+                  style={styles.inrHistoryLink}
+                  onPress={() => navigation.navigate("InrHistory")}
+                >
+                  <Text style={styles.inrHistoryLinkText}>
+                    ⓘ INR geçmişi
+                  </Text>
+                </Pressable>
               </View>
 
               <View style={styles.resultBoxHalf}>
@@ -256,21 +590,122 @@ export default function HomeScreen() {
             </Pressable>
           </View>
 
-          <Pressable
-            style={styles.secondaryButton}
-            onPress={() => navigation.navigate("UserProfile")}
-          >
-            <Text style={styles.secondaryButtonText}>Profil Bilgileri</Text>
-          </Pressable>
-
-          <Pressable
-            style={styles.secondaryButton}
-            onPress={() => signOut(auth)}
-          >
-            <Text style={styles.secondaryButtonText}>Çıkış Yap</Text>
-          </Pressable>
         </View>
       </ScrollView>
+      {menuVisible && (
+        <>
+          <Pressable
+            style={styles.menuDismissArea}
+            onPress={() => closeMenu()}
+          />
+
+          <Animated.View style={[styles.menuPanel, menuPanelAnimatedStyle]}>
+            <View style={styles.menuPanelHeader}>
+              <Text style={styles.menuTitle}>Menü</Text>
+            </View>
+
+            <ScrollView
+              style={styles.menuActionsScroll}
+              contentContainerStyle={styles.menuActions}
+            >
+              <Text style={styles.menuSectionLabel}>Hesap</Text>
+
+              <Pressable
+                style={styles.menuActionButton}
+                onPress={() => {
+                  closeMenu(() => navigation.navigate("UserProfile"));
+                }}
+              >
+                {renderMenuIcon("profile")}
+                <Text style={styles.menuActionText}>Profil Bilgileri</Text>
+              </Pressable>
+
+              <Pressable
+                style={styles.menuActionButton}
+                onPress={() => {
+                  closeMenu(() => navigation.navigate("Settings"));
+                }}
+              >
+                {renderMenuIcon("settings")}
+                <Text style={styles.menuActionText}>Ayarlar</Text>
+              </Pressable>
+
+              <Text style={styles.menuSectionLabel}>Referans Listeleri</Text>
+
+              <Pressable
+                style={styles.menuActionButton}
+                onPress={() => {
+                  closeMenu(() => navigation.navigate("DrugInteractions"));
+                }}
+              >
+                {renderMenuIcon("drug")}
+                <Text style={styles.menuActionText}>Etkileyen İlaçlar</Text>
+              </Pressable>
+
+              <Pressable
+                style={styles.menuActionButton}
+                onPress={() => {
+                  closeMenu(() => navigation.navigate("FoodInteractions"));
+                }}
+              >
+                {renderMenuIcon("food")}
+                <Text style={styles.menuActionText}>Etkileyen Gıdalar</Text>
+              </Pressable>
+
+              <Text style={styles.menuSectionLabel}>Bilgi ve Güvenlik</Text>
+
+              <Pressable
+                style={styles.menuActionButton}
+                onPress={() => {
+                  closeMenu(() => navigation.navigate("MedicalWarnings"));
+                }}
+              >
+                {renderMenuIcon("warning")}
+                <Text style={styles.menuActionText}>Tıbbi Uyarılar</Text>
+              </Pressable>
+
+              <Pressable
+                style={styles.menuActionButton}
+                onPress={() => {
+                  closeMenu(() => navigation.navigate("PrivacyPolicy"));
+                }}
+              >
+                {renderMenuIcon("privacy")}
+                <Text style={styles.menuActionText}>Gizlilik Politikası</Text>
+              </Pressable>
+
+              <Pressable
+                style={styles.menuActionButton}
+                onPress={() => {
+                  closeMenu(() => navigation.navigate("About"));
+                }}
+              >
+                {renderMenuIcon("about")}
+                <Text style={styles.menuActionText}>Hakkında</Text>
+              </Pressable>
+
+              <Pressable
+                style={styles.menuActionButton}
+                onPress={() => {
+                  closeMenu(() => navigation.navigate("Help"));
+                }}
+              >
+                {renderMenuIcon("help")}
+                <Text style={styles.menuActionText}>Yardım</Text>
+              </Pressable>
+            </ScrollView>
+          </Animated.View>
+
+          <Pressable
+            style={styles.menuButtonFloating}
+            onPress={() => closeMenu()}
+          >
+            <View style={[styles.menuLine, styles.menuLineOpen]} />
+            <View style={[styles.menuLine, styles.menuLineOpen]} />
+            <View style={[styles.menuLine, styles.menuLineOpen]} />
+          </Pressable>
+        </>
+      )}
     <Modal
       visible={infoModalVisible}
       transparent
@@ -310,10 +745,14 @@ export default function HomeScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: AppThemeColors, mode: ThemeMode) => {
+  const inrButtonOrange = "#d89b1d";
+  const emptyTabletColor = mode === "dark" ? "#F4F8F9" : "#F2D4A4";
+
+  return StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: "#f4f6f8",
+    backgroundColor: colors.background,
   },
   scrollContent: {
     padding: 20,
@@ -321,19 +760,221 @@ const styles = StyleSheet.create({
   container: {
     gap: 16,
   },
+  headerRow: {
+    position: "relative",
+    zIndex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
   headerTitle: {
     fontSize: 28,
     fontWeight: "700",
-    color: "#2f5f73",
+    color: colors.primary,
     marginTop: 8,
+  },
+  menuButton: {
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+    marginTop: 8,
+  },
+  menuButtonFloating: {
+    position: "absolute",
+    top: 28,
+    right: 20,
+    zIndex: 30,
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+  },
+  menuLine: {
+    width: 24,
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: colors.primary,
+  },
+  menuLineOpen: {
+    backgroundColor: "#ffffff",
+  },
+  menuDismissArea: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    zIndex: 15,
+  },
+  menuPanel: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    width: "78%",
+    zIndex: 20,
+    backgroundColor: colors.primary,
+    paddingHorizontal: 24,
+    paddingTop: 28,
+    borderTopLeftRadius: 36,
+    borderBottomLeftRadius: 36,
+    shadowColor: "#000",
+    shadowOpacity: 0.22,
+    shadowRadius: 14,
+    shadowOffset: { width: -6, height: 0 },
+    elevation: 10,
+  },
+  menuPanelHeader: {
+    minHeight: 52,
+    alignItems: "flex-start",
+    justifyContent: "center",
+    paddingRight: 56,
+  },
+  menuTitle: {
+    color: "#ffffff",
+    fontSize: 34,
+    fontWeight: "700",
+  },
+  menuActionsScroll: {
+    marginTop: 26,
+  },
+  menuActions: {
+    paddingBottom: 34,
+    gap: 12,
+  },
+  menuSectionLabel: {
+    color: "rgba(255,255,255,0.78)",
+    fontSize: 13,
+    fontWeight: "800",
+    marginTop: 8,
+    marginBottom: 2,
+    textTransform: "uppercase",
+  },
+  menuActionButton: {
+    backgroundColor: colors.surface,
+    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    minHeight: 46,
+    flexDirection: "row",
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.1,
+    shadowRadius: 5,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  menuActionIconFrame: {
+    width: 34,
+    height: 34,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
+  },
+  profileIconHead: {
+    width: 11,
+    height: 11,
+    borderRadius: 6,
+    borderWidth: 2.5,
+    borderColor: colors.primary,
+    marginBottom: 4,
+  },
+  profileIconBody: {
+    width: 23,
+    height: 11,
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
+    borderWidth: 2.5,
+    borderBottomWidth: 0,
+    borderColor: colors.primary,
+  },
+  gearIconText: {
+    color: colors.primary,
+    fontSize: 42,
+    lineHeight: 42,
+    fontWeight: "600",
+  },
+  pillIcon: {
+    width: 29,
+    height: 14,
+    borderRadius: 8,
+    borderWidth: 2.5,
+    borderColor: colors.primary,
+    transform: [{ rotate: "-42deg" }],
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  pillDivider: {
+    width: 2.5,
+    height: 12,
+    backgroundColor: colors.primary,
+  },
+  foodIconCircle: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 2.5,
+    borderColor: colors.primary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  foodIconLeaf: {
+    width: 12,
+    height: 17,
+    borderRadius: 10,
+    borderWidth: 2.5,
+    borderColor: colors.primary,
+    transform: [{ rotate: "35deg" }],
+  },
+  lockIconShackle: {
+    width: 16,
+    height: 13,
+    borderTopLeftRadius: 10,
+    borderTopRightRadius: 10,
+    borderWidth: 2.5,
+    borderBottomWidth: 0,
+    borderColor: colors.primary,
+    marginBottom: -2,
+  },
+  lockIconBody: {
+    width: 25,
+    height: 17,
+    borderRadius: 5,
+    borderWidth: 2.5,
+    borderColor: colors.primary,
+  },
+  circleIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 2.5,
+    borderColor: colors.primary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  menuSymbolText: {
+    color: colors.primary,
+    fontSize: 20,
+    fontWeight: "900",
+    lineHeight: 22,
+    textAlign: "center",
+  },
+  menuActionText: {
+    flex: 1,
+    color: colors.primary,
+    fontSize: 17,
+    fontWeight: "700",
   },
   headerSubtitle: {
     fontSize: 16,
-    color: "#6b7280",
+    color: colors.mutedText,
     marginBottom: 8,
   },
   card: {
-    backgroundColor: "#ffffff",
+    backgroundColor: colors.surface,
     borderRadius: 22,
     padding: 18,
     shadowColor: "#000",
@@ -345,17 +986,17 @@ const styles = StyleSheet.create({
   cardTitle: {
     fontSize: 20,
     fontWeight: "600",
-    color: "#2f5f73",
+    color: colors.primary,
     marginBottom: 10,
   },
   bigText: {
     fontSize: 36,
     fontWeight: "700",
-    color: "#2f5f73",
+    color: colors.primary,
   },
   helperText: {
     fontSize: 14,
-    color: "#6b7280",
+    color: colors.mutedText,
     marginTop: 2,
     marginBottom: 8,
   },
@@ -367,24 +1008,32 @@ const styles = StyleSheet.create({
   },
   dayBox: {
     flex: 1,
-    backgroundColor: "#e8eff2",
+    backgroundColor: colors.surfaceMuted,
     borderRadius: 12,
-    paddingVertical: 10,
+    paddingVertical: 8,
     alignItems: "center",
   },
   dayName: {
     fontSize: 12,
     fontWeight: "600",
-    color: "#2f5f73",
+    color: colors.primary,
   },
   dayDose: {
     fontSize: 14,
     fontWeight: "700",
-    color: "#111827",
+    color: colors.text,
     marginTop: 4,
   },
+  dayDoseUnit: {
+    fontSize: 9,
+    fontWeight: "600",
+    color: colors.mutedText,
+    marginTop: 1,
+    lineHeight: 11,
+    textAlign: "center",
+  },
   inrBox: {
-    backgroundColor: "#eef3f5",
+    backgroundColor: colors.surfaceMuted,
     borderRadius: 16,
     paddingVertical: 20,
     paddingHorizontal: 16,
@@ -394,24 +1043,42 @@ const styles = StyleSheet.create({
   },
   inrLabel: {
     fontSize: 18,
-    color: "#2f5f73",
+    color: colors.primary,
     marginBottom: 8,
   },
   inrValue: {
     fontSize: 42,
     fontWeight: "700",
-    color: "#2f5f73",
+    color: colors.primary,
   },
   inrStatus: {
     fontSize: 14,
-    color: "#6b7280",
+    color: colors.mutedText,
     marginTop: 6,
+    textAlign: "center",
+  },
+  inrHistoryLink: {
+    marginTop: 12,
+    paddingVertical: 4,
+    paddingHorizontal: 0,
+    width: "100%",
+  },
+  inrHistoryLinkText: {
+    color: mode === "dark" ? "#93A4AE" : "#8A9AA3",
+    fontSize: 11,
+    fontWeight: "700",
+    textAlign: "center",
   },
   primaryButton: {
-    backgroundColor: "#d89b1d",
+    backgroundColor: inrButtonOrange,
     paddingVertical: 14,
     borderRadius: 14,
     alignItems: "center",
+    shadowColor: "#8a5f0c",
+    shadowOpacity: mode === "light" ? 0.28 : 0.16,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: mode === "light" ? 5 : 2,
   },
   primaryButtonText: {
     color: "#fff",
@@ -419,7 +1086,7 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   secondaryButton: {
-    backgroundColor: "#111827",
+    backgroundColor: colors.button,
     paddingVertical: 14,
     borderRadius: 14,
     alignItems: "center",
@@ -431,11 +1098,11 @@ const styles = StyleSheet.create({
   },
   resultBox: {
     marginTop: 14,
-    backgroundColor: "#f8fafb",
+    backgroundColor: colors.surfaceMuted,
     borderRadius: 12,
     padding: 14,
     borderWidth: 1,
-    borderColor: "#d9e2e8",
+    borderColor: colors.border,
   },
   inrRow: {
     flexDirection: "row",
@@ -445,37 +1112,38 @@ const styles = StyleSheet.create({
   },
   inrBoxHalf: {
     flex: 1,
-    backgroundColor: "#eef3f5",
+    backgroundColor: colors.surfaceMuted,
     borderRadius: 16,
-    paddingVertical: 20,
-    paddingHorizontal: 16,
+    paddingTop: 20,
+    paddingBottom: 12,
+    paddingHorizontal: 12,
     alignItems: "center",
-    justifyContent: "center",
+    justifyContent: "space-between",
     minHeight: 190,
   },
   resultBoxHalf: {
     flex: 1,
-    backgroundColor: "#f8fafb",
+    backgroundColor: colors.surfaceMuted,
     borderRadius: 16,
     padding: 14,
     borderWidth: 1,
-    borderColor: "#d9e2e8",
+    borderColor: colors.border,
     minHeight: 190,
   },
   resultTitle: {
     fontSize: 16,
     fontWeight: "700",
-    color: "#2f5f73",
+    color: colors.primary,
     marginRight: 4,
   },
   resultText: {
     fontSize: 14,
-    color: "#1f2937",
+    color: colors.text,
     marginBottom: 8,
   },
   resultPlaceholder: {
     fontSize: 14,
-    color: "#6b7280",
+    color: colors.mutedText,
     marginTop: 10,
   },
   todayDoseBox: {
@@ -516,6 +1184,11 @@ const styles = StyleSheet.create({
     textShadowColor: "rgba(0,0,0,0.10)",
     textShadowOffset: { width: 0, height: 2 },
     textShadowRadius: 3,
+  },
+  todayDateStop: {
+    color: mode === "dark" ? "#ffffff" : "#8A2F2F",
+    marginBottom: 14,
+    fontWeight: "700",
   },
   todayTitle: {
     fontSize: 27,
@@ -561,7 +1234,7 @@ const styles = StyleSheet.create({
   },
 
   fullTablet: {
-    backgroundColor: "#C77D1A",
+    backgroundColor: mode === "dark" ? inrButtonOrange : "#C77D1A",
   },
 
   halfTablet: {
@@ -569,7 +1242,7 @@ const styles = StyleSheet.create({
   },
 
   emptyTablet: {
-    backgroundColor: "#F2D4A4",
+    backgroundColor: emptyTabletColor,
   },
 
   halfTabletCover: {
@@ -578,7 +1251,7 @@ const styles = StyleSheet.create({
     top: 0,
     width: "50%",
     height: "100%",
-    backgroundColor: "#F2D4A4",
+    backgroundColor: emptyTabletColor,
     zIndex: 1,
   },
 
@@ -598,14 +1271,26 @@ const styles = StyleSheet.create({
     zIndex: 2,
   },
   todayDoseBoxStop: {
-    backgroundColor: "#E7D7D7",
-    borderColor: "#9B4A4A",
+    backgroundColor: mode === "dark" ? "#4A1F28" : "#E7D7D7",
+    borderColor: mode === "dark" ? "#FB7185" : "#9B4A4A",
+    justifyContent: "center",
+  },
+
+  stopDoseContent: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  stopTextGroup: {
+    alignItems: "center",
+    justifyContent: "center",
   },
 
   stopTitle: {
-    fontSize: 20,
-    fontWeight: "800",
-    color: "#8A2F2F",
+    fontSize: 23,
+    fontWeight: "900",
+    color: mode === "dark" ? "#FFE4E6" : "#8A2F2F",
     marginBottom: 8,
     textAlign: "center",
   },
@@ -613,7 +1298,7 @@ const styles = StyleSheet.create({
   stopInfo: {
     fontSize: 17,
     fontWeight: "700",
-    color: "#8A2F2F",
+    color: mode === "dark" ? "#FECDD3" : "#8A2F2F",
     marginBottom: 6,
     textAlign: "center",
   },
@@ -621,7 +1306,7 @@ const styles = StyleSheet.create({
   stopCheck: {
     fontSize: 14,
     fontWeight: "600",
-    color: "#5F2A2A",
+    color: mode === "dark" ? "#FDA4AF" : "#5F2A2A",
     textAlign: "center",
   },
 
@@ -629,34 +1314,39 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 14,
     marginBottom: 6,
+    borderWidth: mode === "dark" ? 1 : 0,
   },
 
   warningBannerCritical: {
-    backgroundColor: "#FDE2E2",
+    backgroundColor: mode === "dark" ? "#4A1F28" : "#FDE2E2",
+    borderColor: mode === "dark" ? "#FB7185" : "transparent",
   },
 
   warningBannerDanger: {
-    backgroundColor: "#FFE8CC",
+    backgroundColor: mode === "dark" ? "#4A2A16" : "#FFE8CC",
+    borderColor: mode === "dark" ? "#FB923C" : "transparent",
   },
 
   warningBannerWarning: {
-    backgroundColor: "#FFF4CC",
+    backgroundColor: mode === "dark" ? "#43330F" : "#FFF4CC",
+    borderColor: mode === "dark" ? "#FACC15" : "transparent",
   },
 
   warningBannerInfo: {
-    backgroundColor: "#E5F3FF",
+    backgroundColor: mode === "dark" ? "#17344A" : "#E5F3FF",
+    borderColor: mode === "dark" ? "#38BDF8" : "transparent",
   },
 
   warningTitle: {
     fontSize: 18,
     fontWeight: "700",
     marginBottom: 4,
-    color: "#1F2937",
+    color: mode === "dark" ? "#F8FAFC" : "#1F2937",
   },
 
   warningText: {
     fontSize: 14,
-    color: "#374151",
+    color: mode === "dark" ? "#E5E7EB" : "#374151",
   },
 
   warningHeader: {
@@ -678,7 +1368,7 @@ const styles = StyleSheet.create({
 
   infoIcon: {
     fontSize: 16,
-    color: "#2f5f73",
+    color: colors.primary,
     marginLeft: 6,
   },
 
@@ -692,7 +1382,7 @@ const styles = StyleSheet.create({
 
   modalContent: {
     width: "100%",
-    backgroundColor: "#fff",
+    backgroundColor: colors.surface,
     borderRadius: 20,
     padding: 22,
   },
@@ -700,19 +1390,19 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: 22,
     fontWeight: "700",
-    color: "#2f5f73",
+    color: colors.primary,
     marginBottom: 16,
   },
 
   modalText: {
     fontSize: 16,
-    color: "#374151",
+    color: colors.text,
     marginBottom: 12,
   },
 
   modalButton: {
     marginTop: 12,
-    backgroundColor: "#2f5f73",
+    backgroundColor: colors.primary,
     borderRadius: 12,
     paddingVertical: 12,
     alignItems: "center",
@@ -726,20 +1416,21 @@ const styles = StyleSheet.create({
 
   resultLabel: {
     fontSize: 13,
-    color: "#6b7280",
+    color: colors.mutedText,
     marginBottom: 4,
   },
 
   resultDose: {
     fontSize: 22,
     fontWeight: "600",
-    color: "#2f5f73",
+    color: colors.primary,
     marginBottom: 16,
   },
 
   resultCheck: {
     fontSize: 18,
     fontWeight: "700",
-    color: "#111827",
+    color: colors.text,
   },
-});
+  });
+};

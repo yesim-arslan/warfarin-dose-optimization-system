@@ -9,12 +9,18 @@ import {
 import { Picker } from "@react-native-picker/picker";
 import { useNavigation } from "@react-navigation/native";
 import { calculateDose } from "../algorithms/doseCalculator";
+import { AppThemeColors, useTheme } from "../theme/ThemeContext";
+import { auth } from "../services/firebase";
+import { addInrRecord, getUserProfile } from "../services/firestore";
 
 export default function EnterInrScreen() {
   const navigation = useNavigation<any>();
+  const { colors } = useTheme();
+  const styles = createStyles(colors);
 
   // Başlangıç değeri
   const [selectedInr, setSelectedInr] = useState("2.5");
+  const [isSaving, setIsSaving] = useState(false);
 
   // 0.8 - 8.0 arası 0.1 artışlı INR listesi
   const inrOptions = useMemo(() => {
@@ -25,85 +31,152 @@ export default function EnterInrScreen() {
     return values;
   }, []);
 
-  const handleContinue = () => {
+  const handleContinue = async () => {
+    const user = auth.currentUser;
     const inrValue = parseFloat(selectedInr);
+
+    if (!user) {
+      Alert.alert("Hata", "INR kaydı için giriş yapmış olman gerekiyor.");
+      return;
+    }
 
     if (isNaN(inrValue)) {
       Alert.alert("Hata", "Lütfen geçerli bir INR değeri seç.");
       return;
     }
 
-    const result = calculateDose({
-      indication: "af_stroke", // şimdilik sabit
-      currentInr: inrValue,
-      weeklyDoseMg: 35, // şimdilik sabit
-    });
+    try {
+      setIsSaving(true);
+      const measuredAt = new Date().toISOString();
 
-    navigation.navigate("Home", {
-      currentInr: inrValue,
-      targetLabel: result.targetLabel,
-      suggestedWeeklyDoseMg: result.suggestedWeeklyDoseMg,
-      action: result.action,
-      warnings: result.warnings,
-      nextCheck: result.nextCheck,
-    });
+      await addInrRecord({
+        uid: user.uid,
+        inr: inrValue,
+        measuredAt,
+      });
+
+      const profile = await getUserProfile(user.uid);
+
+      if (!profile?.indication) {
+        Alert.alert(
+          "Eksik bilgi",
+          "Doz hesaplamak için INR takip sebebini seçmen gerekiyor."
+        );
+        navigation.navigate("IndicationReason");
+        return;
+      }
+
+      const result = calculateDose({
+        indication: profile.indication,
+        currentInr: inrValue,
+        weeklyDoseMg: profile.currentWeeklyDoseMg ?? 35,
+      });
+
+      navigation.navigate("Home", {
+        currentInr: inrValue,
+        targetLabel: result.targetLabel,
+        suggestedWeeklyDoseMg: result.suggestedWeeklyDoseMg,
+        action: result.action,
+        warnings: result.warnings,
+        nextCheck: result.nextCheck,
+        measuredAt,
+      });
+    } catch (error) {
+      console.error(error);
+      Alert.alert(
+        "Hata",
+        "INR değeri kaydedilemedi. Lütfen internet bağlantını kontrol edip tekrar dene."
+      );
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>INR Girişi</Text>
-      <Text style={styles.label}>Yeni INR Değeri</Text>
-
-      <View style={styles.pickerWrapper}>
-        <Picker
-          selectedValue={selectedInr}
-          onValueChange={(itemValue) => setSelectedInr(String(itemValue))}
-          style={styles.picker}
-          itemStyle={styles.pickerItem}
-        >
-          {inrOptions.map((value) => (
-            <Picker.Item
-              key={value}
-              label={value}
-              value={value}
-            />
-          ))}
-        </Picker>
-      </View>
-
-      <Text style={styles.selectedText}>Seçilen INR: {selectedInr}</Text>
-
-      <Pressable style={styles.button} onPress={handleContinue}>
-        <Text style={styles.buttonText}>Hesapla</Text>
+      <Pressable
+        style={styles.backButton}
+        onPress={() => navigation.navigate("Home")}
+      >
+        <Text style={styles.backButtonText}>← Ana Sayfaya Dön</Text>
       </Pressable>
+
+      <View style={styles.formContent}>
+        <Text style={styles.title}>INR Girişi</Text>
+        <Text style={styles.label}>Yeni INR Değeri</Text>
+
+        <View style={styles.pickerWrapper}>
+          <Picker
+            selectedValue={selectedInr}
+            onValueChange={(itemValue) => setSelectedInr(String(itemValue))}
+            style={styles.picker}
+            itemStyle={styles.pickerItem}
+          >
+            {inrOptions.map((value) => (
+              <Picker.Item
+                key={value}
+                label={value}
+                value={value}
+              />
+            ))}
+          </Picker>
+        </View>
+
+        <Text style={styles.selectedText}>Seçilen INR: {selectedInr}</Text>
+
+        <Pressable
+          style={[styles.button, isSaving && styles.disabledButton]}
+          onPress={handleContinue}
+          disabled={isSaving}
+        >
+          <Text style={styles.buttonText}>
+            {isSaving ? "Kaydediliyor..." : "Hesapla"}
+          </Text>
+        </Pressable>
+      </View>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: AppThemeColors) =>
+  StyleSheet.create({
   container: {
     flex: 1,
     padding: 24,
+    backgroundColor: colors.background,
+  },
+  backButton: {
+    alignSelf: "flex-start",
+    marginBottom: 18,
+    paddingVertical: 8,
+    paddingRight: 10,
+  },
+  backButtonText: {
+    color: colors.primary,
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  formContent: {
+    flex: 1,
     justifyContent: "center",
-    backgroundColor: "#fff",
   },
   title: {
     fontSize: 28,
     fontWeight: "700",
     marginBottom: 24,
-    color: "#2f5f73",
+    color: colors.primary,
   },
   label: {
     fontSize: 16,
     marginBottom: 12,
-    color: "#374151",
+    color: colors.text,
   },
   pickerWrapper: {
     borderWidth: 1,
-    borderColor: "#d1d5db",
+    borderColor: colors.border,
     borderRadius: 14,
     overflow: "hidden",
-    backgroundColor: "#f8fafc",
+    backgroundColor: colors.inputBackground,
   },
   picker: {
     height: 220,
@@ -111,20 +184,23 @@ const styles = StyleSheet.create({
   },
   pickerItem: {
     fontSize: 22,
-    color: "#2f5f73",
+    color: colors.primary,
   },
   selectedText: {
     marginTop: 14,
     fontSize: 16,
-    color: "#6b7280",
+    color: colors.mutedText,
     textAlign: "center",
   },
   button: {
     marginTop: 24,
-    backgroundColor: "#111",
+    backgroundColor: colors.button,
     padding: 14,
     borderRadius: 10,
     alignItems: "center",
+  },
+  disabledButton: {
+    opacity: 0.6,
   },
   buttonText: {
     color: "#fff",
