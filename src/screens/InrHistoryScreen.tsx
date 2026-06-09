@@ -13,12 +13,13 @@ import { AppThemeColors, useTheme } from "../theme/ThemeContext";
 import { auth } from "../services/firebase";
 import { getInrRecords } from "../services/firestore";
 import { InrRecord } from "../types/models";
+import { useLanguage } from "../i18n/LanguageContext";
 
 const chartRangeOptions = [
-  { label: "1 gün", amount: 1, unit: "day" },
-  { label: "1 ay", amount: 1, unit: "month" },
-  { label: "6 ay", amount: 6, unit: "month" },
-  { label: "1 yıl", amount: 1, unit: "year" },
+  { labelKey: "oneDay", amount: 1, unit: "day" },
+  { labelKey: "oneMonth", amount: 1, unit: "month" },
+  { labelKey: "sixMonths", amount: 6, unit: "month" },
+  { labelKey: "oneYear", amount: 1, unit: "year" },
 ] as const;
 
 type ChartRangeOption = (typeof chartRangeOptions)[number];
@@ -66,6 +67,7 @@ const getRangeStartDate = (range: ChartRangeOption) => {
 export default function InrHistoryScreen() {
   const navigation = useNavigation<any>();
   const { colors, mode } = useTheme();
+  const { t } = useLanguage();
   const styles = createStyles(colors, mode);
   const [records, setRecords] = useState<InrRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -218,8 +220,8 @@ export default function InrHistoryScreen() {
         } catch (error) {
           console.error(error);
           Alert.alert(
-            "Hata",
-            "INR geçmişi yüklenemedi. Lütfen tekrar dene."
+            t("error"),
+            t("historyLoadError")
           );
         } finally {
           if (isActive) {
@@ -239,14 +241,14 @@ export default function InrHistoryScreen() {
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <Pressable style={styles.backButton} onPress={() => navigation.goBack()}>
-        <Text style={styles.backButtonText}>← Ana Sayfaya Dön</Text>
+        <Text style={styles.backButtonText}>{t("backHome")}</Text>
       </Pressable>
 
-      <Text style={styles.title}>INR Geçmişi</Text>
+      <Text style={styles.title}>{t("historyTitle")}</Text>
 
       <View style={styles.chartCard}>
         <View style={styles.chartHeader}>
-          <Text style={styles.chartTitle}>INR Grafiği</Text>
+          <Text style={styles.chartTitle}>{t("inrChart")}</Text>
           {chartValues ? (
             <Text style={styles.chartRangeText}>
               {chartValues.min.toFixed(1)} - {chartValues.max.toFixed(1)}
@@ -256,11 +258,11 @@ export default function InrHistoryScreen() {
 
         <View style={styles.rangeSelector}>
           {chartRangeOptions.map((option) => {
-            const isSelected = selectedChartRange.label === option.label;
+            const isSelected = selectedChartRange.labelKey === option.labelKey;
 
             return (
               <Pressable
-                key={option.label}
+                key={option.labelKey}
                 style={[
                   styles.rangeOption,
                   isSelected && styles.rangeOptionSelected,
@@ -273,7 +275,7 @@ export default function InrHistoryScreen() {
                     isSelected && styles.rangeOptionTextSelected,
                   ]}
                 >
-                  {option.label}
+                  {t(option.labelKey)}
                 </Text>
               </Pressable>
             );
@@ -368,7 +370,7 @@ export default function InrHistoryScreen() {
             </View>
           </>
         ) : (
-          <Text style={styles.emptyText}>Bu aralıkta INR kaydı yok.</Text>
+          <Text style={styles.emptyText}>{t("noInrInRange")}</Text>
         )}
       </View>
 
@@ -376,8 +378,8 @@ export default function InrHistoryScreen() {
         <View style={styles.listHeader}>
           <Text style={[styles.headerText, styles.inrColumn]}>INR</Text>
           <View style={styles.dateTimeGroup}>
-            <Text style={[styles.headerText, styles.dateColumn]}>Tarih</Text>
-            <Text style={[styles.headerText, styles.timeColumn]}>Saat</Text>
+            <Text style={[styles.headerText, styles.dateColumn]}>{t("date")}</Text>
+            <Text style={[styles.headerText, styles.timeColumn]}>{t("time")}</Text>
           </View>
         </View>
 
@@ -386,7 +388,7 @@ export default function InrHistoryScreen() {
             <ActivityIndicator color={colors.primary} />
           </View>
         ) : records.length === 0 ? (
-          <Text style={styles.emptyText}>Henüz INR kaydı bulunmuyor.</Text>
+          <Text style={styles.emptyText}>{t("noInrRecords")}</Text>
         ) : (
           records.map((record) => {
             const { dateText, timeText } = formatDateTime(record.measuredAt);

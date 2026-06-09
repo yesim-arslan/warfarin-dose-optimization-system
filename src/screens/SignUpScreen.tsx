@@ -6,6 +6,7 @@ import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { RootStackParamList } from "../navigation/AppNavigator";
 import { createUserProfileIfMissing } from "../services/firestore";
 import { AppThemeColors, useTheme } from "../theme/ThemeContext";
+import { useLanguage } from "../i18n/LanguageContext";
 
 type Props = NativeStackScreenProps<RootStackParamList, "SignUp">;
 
@@ -13,14 +14,15 @@ export default function SignUpScreen({ navigation, route }: Props) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const { colors } = useTheme();
+  const { t } = useLanguage();
   const styles = createStyles(colors);
   const acceptedMedicalConsent = route.params?.acceptedMedicalConsent === true;
 
   const handleSignUp = async () => {
     if (!acceptedMedicalConsent) {
       Alert.alert(
-        "Onay gerekli",
-        "Hesap oluşturmak için tıbbi bilgilendirme ve kullanım onayını kabul etmen gerekiyor."
+        t("consentRequired"),
+        t("consentRequiredMessage")
       );
       navigation.navigate("MedicalConsent");
       return;
@@ -37,16 +39,16 @@ export default function SignUpScreen({ navigation, route }: Props) {
 
     
 
-      Alert.alert("OK", "Kayıt başarılı");
+      Alert.alert(t("ok"), t("signUpSuccess"));
     } catch (e: any) {
-      Alert.alert("Hata", e?.message ?? "Bilinmeyen hata");
+      Alert.alert(t("error"), e?.message ?? t("unknownError"));
       console.log(e);
     }
   };
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Kayıt Ol</Text>
+      <Text style={styles.title}>{t("signUp")}</Text>
 
       <TextInput
         style={styles.input}
@@ -54,7 +56,7 @@ export default function SignUpScreen({ navigation, route }: Props) {
         onChangeText={setEmail}
         autoCapitalize="none"
         keyboardType="email-address"
-        placeholder="Email"
+        placeholder={t("email")}
         placeholderTextColor={colors.mutedText}
       />
       <TextInput
@@ -62,16 +64,16 @@ export default function SignUpScreen({ navigation, route }: Props) {
         value={password}
         onChangeText={setPassword}
         secureTextEntry
-        placeholder="Şifre (min 6)"
+        placeholder={t("signUpPassword")}
         placeholderTextColor={colors.mutedText}
       />
 
       <Pressable style={styles.button} onPress={handleSignUp}>
-        <Text style={styles.buttonText}>Kayıt Ol</Text>
+        <Text style={styles.buttonText}>{t("signUp")}</Text>
       </Pressable>
 
       <Pressable onPress={() => navigation.navigate("Login")}>
-        <Text style={styles.link}>Zaten hesabın var mı? Giriş yap</Text>
+        <Text style={styles.link}>{t("hasAccount")}</Text>
       </Pressable>
     </View>
   );

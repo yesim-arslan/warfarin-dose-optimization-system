@@ -22,6 +22,7 @@ import HelpScreen from "../screens/HelpScreen";
 import { useTheme } from "../theme/ThemeContext";
 import { getUserProfile } from "../services/firestore";
 import { UserProfile } from "../types/models";
+import { useLanguage } from "../i18n/LanguageContext";
 
 export type RootStackParamList = {
   Login: undefined;
@@ -60,6 +61,7 @@ export default function AppNavigator() {
   const [loading, setLoading] = useState(true);
   const [profileLoading, setProfileLoading] = useState(false);
   const { colors, setMode } = useTheme();
+  const { setLanguage } = useLanguage();
 
   useEffect(() => {
     const unsub = subscribeAuth((u) => {
@@ -74,6 +76,7 @@ export default function AppNavigator() {
 
     if (!user) {
       setMode("light");
+      setLanguage("tr");
       setUserProfile(null);
       setProfileLoading(false);
       return;
@@ -90,12 +93,14 @@ export default function AppNavigator() {
 
         setUserProfile(profile);
         setMode(profile?.themeMode === "dark" ? "dark" : "light");
+        setLanguage(profile?.language === "en" ? "en" : "tr");
       } catch (error) {
         console.error(error);
 
         if (isActive) {
           setUserProfile(null);
           setMode("light");
+          setLanguage("tr");
         }
       } finally {
         if (isActive) {
@@ -109,7 +114,7 @@ export default function AppNavigator() {
     return () => {
       isActive = false;
     };
-  }, [setMode, user]);
+  }, [setLanguage, setMode, user]);
 
   if (loading || (user && profileLoading)) {
     return (

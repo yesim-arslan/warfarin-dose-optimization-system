@@ -12,12 +12,14 @@ import { useNavigation } from "@react-navigation/native";
 import { auth } from "../services/firebase";
 import { deleteAccount } from "../services/auth";
 import { AppThemeColors, useTheme } from "../theme/ThemeContext";
+import { useLanguage } from "../i18n/LanguageContext";
 
 export default function DeleteAccountScreen() {
   const [deletePassword, setDeletePassword] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
   const navigation = useNavigation<any>();
   const { colors } = useTheme();
+  const { t } = useLanguage();
   const styles = createStyles(colors);
 
   const getDeleteErrorMessage = (error: any) => {
@@ -25,49 +27,49 @@ export default function DeleteAccountScreen() {
       error?.code === "auth/wrong-password" ||
       error?.code === "auth/invalid-credential"
     ) {
-      return "Şifre hatalı. Lütfen tekrar dene.";
+      return t("wrongDeletePassword");
     }
 
     if (error?.code === "auth/requires-recent-login") {
-      return "Güvenlik için tekrar giriş yapıp yeniden denemen gerekiyor.";
+      return t("recentLoginRequired");
     }
 
     if (error?.code === "permission-denied") {
-      return "Hesap verilerini silmek için Firestore izinleri yetersiz. Güvenlik kurallarını güncelledikten sonra tekrar dene.";
+      return t("deletePermissionDenied");
     }
 
-    return error?.message ?? "Hesap silinemedi.";
+    return error?.message ?? t("deleteAccountTitle");
   };
 
   const handleDeleteAccount = () => {
     const user = auth.currentUser;
 
     if (!user) {
-      Alert.alert("Hata", "Kullanıcı bulunamadı.");
+      Alert.alert(t("error"), t("userNotFound"));
       return;
     }
 
     if (!deletePassword) {
-      Alert.alert("Eksik bilgi", "Hesabı silmek için şifreni gir.");
+      Alert.alert(t("missingInfo"), t("deletePasswordMissing"));
       return;
     }
 
     Alert.alert(
-      "Hesabı sil",
-      "Hesabın, profil bilgilerin, INR kayıtların ve önerilerin kalıcı olarak silinecek.",
+      t("deleteAccountTitle"),
+      t("deleteAccountConfirmMessage"),
       [
-        { text: "Vazgeç", style: "cancel" },
+        { text: t("cancel"), style: "cancel" },
         {
-          text: "Sil",
+          text: t("delete"),
           style: "destructive",
           onPress: async () => {
             try {
               setIsDeleting(true);
               await deleteAccount(user, deletePassword);
-              Alert.alert("Hesap silindi", "Hesabın başarıyla silindi.");
+              Alert.alert(t("accountDeleted"), t("accountDeletedMessage"));
             } catch (error: any) {
               console.error(error);
-              Alert.alert("Hata", getDeleteErrorMessage(error));
+              Alert.alert(t("error"), getDeleteErrorMessage(error));
             } finally {
               setIsDeleting(false);
             }
@@ -83,21 +85,21 @@ export default function DeleteAccountScreen() {
         style={styles.backButton}
         onPress={() => navigation.goBack()}
       >
-        <Text style={styles.backButtonText}>← Profil Bilgilerine Dön</Text>
+        <Text style={styles.backButtonText}>{t("backProfile")}</Text>
       </TouchableOpacity>
 
       <View style={styles.dangerZone}>
-        <Text style={styles.dangerTitle}>Hesabı Sil</Text>
+        <Text style={styles.dangerTitle}>{t("deleteAccountTitle")}</Text>
         <Text style={styles.dangerText}>
-          Bu işlem geri alınamaz. Hesabınla birlikte kayıtlı INR verilerin ve doz önerilerin silinir.
+          {t("deleteAccountDescription")}
         </Text>
 
-        <Text style={styles.label}>Şifre</Text>
+        <Text style={styles.label}>{t("password")}</Text>
         <TextInput
           style={styles.input}
           value={deletePassword}
           onChangeText={setDeletePassword}
-          placeholder="Şifreni gir"
+          placeholder={t("enterPassword")}
           placeholderTextColor={colors.mutedText}
           secureTextEntry
         />
@@ -108,7 +110,7 @@ export default function DeleteAccountScreen() {
           disabled={isDeleting}
         >
           <Text style={styles.deleteButtonText}>
-            {isDeleting ? "Siliniyor..." : "Hesabımı Sil"}
+            {isDeleting ? t("deleting") : t("deleteMyAccount")}
           </Text>
         </TouchableOpacity>
       </View>

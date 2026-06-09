@@ -1,14 +1,17 @@
 import React from "react";
-import { foodInteractions } from "../constants/interactionLists";
+import { foodInteractions, localizeInteractionItems } from "../constants/interactionLists";
 import InteractionListScreen from "./InteractionListScreen";
+import { useLanguage } from "../i18n/LanguageContext";
 
 export default function FoodInteractionsScreen() {
+  const { language, t } = useLanguage();
+
   return (
     <InteractionListScreen
-      title="INR'yi Etkileyen Gıdalar"
-      searchPlaceholder="Gıda ara"
-      notFoundText="Aradığınız gıda bulunamadı. Detaylı bilgi için doktorunuza başvurunuz."
-      items={foodInteractions}
+      title={t("affectingFoodsTitle")}
+      searchPlaceholder={t("searchFood")}
+      notFoundText={t("foodNotFound")}
+      items={localizeInteractionItems(foodInteractions, "food", language)}
     />
   );
 }

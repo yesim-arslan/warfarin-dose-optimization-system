@@ -3,8 +3,9 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { AppThemeColors, useTheme } from "../theme/ThemeContext";
 import { requestHomeMenuOpen } from "../navigation/menuReturn";
+import { useLanguage } from "../i18n/LanguageContext";
 
-const helpSections = [
+const helpSectionsTr = [
   {
     title: "1. Uygulamaya giriş",
     text:
@@ -47,10 +48,56 @@ const helpSections = [
   },
 ];
 
+const helpSectionsEn = [
+  {
+    title: "1. Log in to the app",
+    text:
+      "You can log in with your email address and password. If you are registering for the first time, you need to read and accept the medical information screen first.",
+  },
+  {
+    title: "2. INR tracking reason",
+    text:
+      "During the first registration flow, you are asked to select your INR tracking reason. You can later change this information from the Profile Information screen.",
+  },
+  {
+    title: "3. Entering an INR value",
+    text:
+      "Tap the INR Entry button on the home screen. Select your measured INR value and continue. The app shows information and dose support according to the entered value.",
+  },
+  {
+    title: "4. Information on the home screen",
+    text:
+      "On the home screen, you can see your current INR value, target range, treatment recommendation, next control time, and weekly medication dose schedule.",
+  },
+  {
+    title: "5. INR history",
+    text:
+      "From the INR history section in the current INR card, you can view previously entered INR values and the chart.",
+  },
+  {
+    title: "6. Understanding warnings",
+    text:
+      "Red, orange, yellow, or blue warnings may appear on the screen. You can read the meaning of these colors and U codes from the Medical Warnings page in the menu.",
+  },
+  {
+    title: "7. Food and drug lists",
+    text:
+      "You can search examples that may affect INR values on the Affecting Foods and Affecting Drugs pages in the menu. Consult your doctor for detailed information.",
+  },
+  {
+    title: "8. Profile and settings",
+    text:
+      "You can edit your tracking reason and weekly dose information from Profile Information. You can select light/dark appearance and app language from Settings.",
+  },
+];
+
 export default function HelpScreen() {
   const navigation = useNavigation<any>();
   const { colors } = useTheme();
+  const { language, t } = useLanguage();
   const styles = createStyles(colors);
+  const isEnglish = language === "en";
+  const helpSections = isEnglish ? helpSectionsEn : helpSectionsTr;
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
@@ -61,16 +108,16 @@ export default function HelpScreen() {
           navigation.goBack();
         }}
       >
-        <Text style={styles.backButtonText}>← Geri</Text>
+        <Text style={styles.backButtonText}>{t("back")}</Text>
       </Pressable>
 
-      <Text style={styles.title}>Yardım</Text>
+      <Text style={styles.title}>{t("help")}</Text>
 
       <View style={styles.card}>
         <Text style={styles.introText}>
-          Bu sayfa, uygulamayı adım adım kullanmanıza yardımcı olmak için
-          hazırlanmıştır. Anlamadığınız bir bölüm olursa doktorunuza veya destek
-          adresine danışabilirsiniz.
+          {isEnglish
+            ? "This page was prepared to help you use the application step by step. If there is a section you do not understand, you can consult your doctor or the support address."
+            : "Bu sayfa, uygulamayı adım adım kullanmanıza yardımcı olmak için hazırlanmıştır. Anlamadığınız bir bölüm olursa doktorunuza veya destek adresine danışabilirsiniz."}
         </Text>
 
         {helpSections.map((section) => (
@@ -81,10 +128,13 @@ export default function HelpScreen() {
         ))}
 
         <View style={styles.supportBox}>
-          <Text style={styles.supportTitle}>Farklı sorular için destek</Text>
+          <Text style={styles.supportTitle}>
+            {isEnglish ? "Support for other questions" : "Farklı sorular için destek"}
+          </Text>
           <Text style={styles.paragraph}>
-            Uygulama ile ilgili farklı sorularınız için aşağıdaki e-posta
-            adresinden destek alabilirsiniz.
+            {isEnglish
+              ? "For other questions about the application, you can get support from the email address below."
+              : "Uygulama ile ilgili farklı sorularınız için aşağıdaki e-posta adresinden destek alabilirsiniz."}
           </Text>
           <Text style={styles.emailText}>yesim.arslan01@gmail.com</Text>
         </View>

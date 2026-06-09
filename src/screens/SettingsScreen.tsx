@@ -3,17 +3,23 @@ import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { AppThemeColors, ThemeMode, useTheme } from "../theme/ThemeContext";
 import { auth } from "../services/firebase";
-import { updateUserThemeMode } from "../services/firestore";
+import { updateUserLanguage, updateUserThemeMode } from "../services/firestore";
 import { requestHomeMenuOpen } from "../navigation/menuReturn";
+import { AppLanguage, useLanguage } from "../i18n/LanguageContext";
 
 export default function SettingsScreen() {
   const navigation = useNavigation<any>();
   const { colors, mode, setMode } = useTheme();
+  const { language, setLanguage, t } = useLanguage();
   const styles = createStyles(colors);
 
   const options: { label: string; value: ThemeMode }[] = [
-    { label: "Light Mode", value: "light" },
-    { label: "Dark Mode", value: "dark" },
+    { label: t("lightMode"), value: "light" },
+    { label: t("darkMode"), value: "dark" },
+  ];
+  const languageOptions: { label: string; value: AppLanguage }[] = [
+    { label: t("turkish"), value: "tr" },
+    { label: t("english"), value: "en" },
   ];
 
   const handleThemeChange = async (nextMode: ThemeMode) => {
@@ -32,9 +38,28 @@ export default function SettingsScreen() {
       console.error(error);
       setMode(previousMode);
       Alert.alert(
-        "Hata",
-        "Tema tercihin kaydedilemedi. Lütfen tekrar dene."
+        t("error"),
+        t("themeSaveError")
       );
+    }
+  };
+
+  const handleLanguageChange = async (nextLanguage: AppLanguage) => {
+    const previousLanguage = language;
+    const user = auth.currentUser;
+
+    setLanguage(nextLanguage);
+
+    if (!user) {
+      return;
+    }
+
+    try {
+      await updateUserLanguage(user.uid, nextLanguage);
+    } catch (error) {
+      console.error(error);
+      setLanguage(previousLanguage);
+      Alert.alert(t("error"), t("languageSaveError"));
     }
   };
 
@@ -47,15 +72,15 @@ export default function SettingsScreen() {
           navigation.goBack();
         }}
       >
-        <Text style={styles.backButtonText}>← Geri</Text>
+        <Text style={styles.backButtonText}>{t("back")}</Text>
       </Pressable>
 
-      <Text style={styles.title}>Ayarlar</Text>
+      <Text style={styles.title}>{t("settings")}</Text>
 
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Görünüm</Text>
+        <Text style={styles.cardTitle}>{t("appearance")}</Text>
         <Text style={styles.helperText}>
-          Uygulamanın açık veya koyu temada görünmesini seç.
+          {t("appearanceHelper")}
         </Text>
 
         <View style={styles.segmentedControl}>
@@ -85,8 +110,39 @@ export default function SettingsScreen() {
         </View>
       </View>
 
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>{t("language")}</Text>
+        <Text style={styles.helperText}>{t("languageHelper")}</Text>
+
+        <View style={styles.segmentedControl}>
+          {languageOptions.map((option) => {
+            const isSelected = language === option.value;
+
+            return (
+              <Pressable
+                key={option.value}
+                style={[
+                  styles.segmentButton,
+                  isSelected && styles.segmentButtonSelected,
+                ]}
+                onPress={() => handleLanguageChange(option.value)}
+              >
+                <Text
+                  style={[
+                    styles.segmentButtonText,
+                    isSelected && styles.segmentButtonTextSelected,
+                  ]}
+                >
+                  {option.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
+
       <Text style={styles.securityNote}>
-        Veriler Firebase üzerinde güvenli şekilde saklanmaktadır.
+        {t("settingsSavedSecure")}
       </Text>
     </View>
   );
@@ -127,6 +183,7 @@ const createStyles = (colors: AppThemeColors) =>
       shadowRadius: 8,
       shadowOffset: { width: 0, height: 3 },
       elevation: 3,
+      marginBottom: 14,
     },
     securityNote: {
       marginTop: "auto",

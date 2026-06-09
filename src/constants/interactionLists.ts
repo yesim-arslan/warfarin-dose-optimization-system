@@ -585,3 +585,175 @@ export const drugInteractions: InteractionItem[] = [
       "Warfarin etkisini azaltan ilaçlar arasında yer alır. Doktor kontrolü önerilir.",
   },
 ];
+
+const foodNameEn: Record<string, string> = {
+  Lahana: "Cabbage",
+  Ispanak: "Spinach",
+  Pazı: "Chard",
+  Maydanoz: "Parsley",
+  Şalgam: "Turnip",
+  "Balık yağı": "Fish oil",
+  Semizotu: "Purslane",
+  Kıvırcık: "Curly lettuce",
+  Marul: "Lettuce",
+  Leblebi: "Roasted chickpeas",
+  Karaciğer: "Liver",
+  "Yeşil çay": "Green tea",
+  Brokoli: "Broccoli",
+  "Brüksel lahanası": "Brussels sprouts",
+  Kuşkonmaz: "Asparagus",
+  Karnabahar: "Cauliflower",
+  Peynir: "Cheese",
+  Bezelye: "Peas",
+  Kahve: "Coffee",
+  Avokado: "Avocado",
+  "Kırmızı et": "Red meat",
+  Tavuk: "Chicken",
+  Yumurta: "Egg",
+  Süt: "Milk",
+  Ekmek: "Bread",
+  Tereyağı: "Butter",
+  Havuç: "Carrot",
+  Kereviz: "Celery",
+  Mısır: "Corn",
+  "Yeşil fasulye": "Green beans",
+  Soğan: "Onion",
+  Pirinç: "Rice",
+  Domates: "Tomato",
+  Patates: "Potato",
+  Biber: "Pepper",
+  Yerfıstığı: "Peanut",
+  "Bal kabağı": "Pumpkin",
+  Elma: "Apple",
+  Portakal: "Orange",
+  Çilek: "Strawberry",
+  Yoğurt: "Yogurt",
+};
+
+const drugNameEn: Record<string, string> = {
+  İbufen: "Ibufen",
+  Alkol: "Alcohol",
+  Parasetamol: "Paracetamol",
+  Asetaminofen: "Acetaminophen",
+  Penisilinler: "Penicillins",
+  Sefalosporinler: "Cephalosporins",
+  Kloramfenikol: "Chloramphenicol",
+  Siprofloksasin: "Ciprofloxacin",
+  Eritromisin: "Erythromycin",
+  Sulfonamidler: "Sulfonamides",
+  Amiodaron: "Amiodarone",
+  Simetidin: "Cimetidine",
+  Kortizon: "Cortisone",
+  Flukonazol: "Fluconazole",
+  Kinidin: "Quinidine",
+  "E vitamini": "Vitamin E",
+  Askorbik: "Ascorbic acid",
+  "Askorbik asit": "Ascorbic acid",
+  Barbitüratlar: "Barbiturates",
+  Karbamazepin: "Carbamazepine",
+  Östrojen: "Estrogen",
+  Merkaptopürin: "Mercaptopurine",
+};
+
+const translateCategory = (category: string, type: "food" | "drug") => {
+  if (type === "food") {
+    if (category.includes("Probiyotik")) {
+      return "Probiotic / may affect vitamin K production";
+    }
+
+    if (category.includes("Az miktarda")) {
+      return "Food containing a small amount of vitamin K";
+    }
+
+    if (category.includes("içecek")) {
+      return "Vitamin K-rich drink";
+    }
+
+    if (category.includes("takviye")) {
+      return "Vitamin K-rich food / supplement";
+    }
+
+    return "Vitamin K-rich food";
+  }
+
+  if (category.includes("Asetil")) {
+    return "Acetylsalicylic acid";
+  }
+
+  if (category.includes("Naproksen")) {
+    return "Naproxen";
+  }
+
+  if (category.includes("Antibiyotik")) {
+    return "Antibiotic";
+  }
+
+  if (category.includes("azaltabilir")) {
+    return "May reduce Warfarin effect";
+  }
+
+  if (category.includes("artırabilir")) {
+    return "May increase Warfarin effect";
+  }
+
+  return category;
+};
+
+const translateFoodDetail = (item: InteractionItem) => {
+  if (item.category.includes("Probiyotik")) {
+    return "Because probiotic bacteria in yogurt may increase vitamin K production, INR may decrease during use.";
+  }
+
+  if (item.category.includes("Az miktarda")) {
+    return "This food contains a small amount of vitamin K. Keeping intake stable within the usual diet is recommended during Warfarin use.";
+  }
+
+  if (item.category.includes("takviye")) {
+    return "This item is listed among foods or supplements with dense vitamin K content. If used as a supplement, it should be reviewed with a doctor.";
+  }
+
+  if (item.category.includes("içecek")) {
+    return "Because it may contain vitamin K, it can reduce the effect of Warfarin. Keeping the amount stable during regular consumption is recommended.";
+  }
+
+  return "Vitamin K-rich foods may reduce the effect of Warfarin. It is recommended to avoid sudden changes and keep the consumed amount stable according to your doctor's advice.";
+};
+
+const translateDrugDetail = (item: InteractionItem) => {
+  if (item.category.includes("Asetil") || item.category.includes("Ibuprofen") || item.category.includes("Ketoprofen") || item.category.includes("Naproksen")) {
+    return "It can directly affect the clotting system. Unless specifically prescribed and approved by a doctor, it is recommended not to use it together with Warfarin.";
+  }
+
+  if (item.category.includes("Antibiyotik")) {
+    return "Antibiotics may increase the effect of Warfarin. INR monitoring may be needed if an antibiotic is started.";
+  }
+
+  if (item.category.includes("artırabilir")) {
+    return "This medicine or substance may increase the effect of Warfarin. Doctor supervision and INR monitoring are recommended.";
+  }
+
+  if (item.category.includes("azaltabilir")) {
+    return "This medicine may reduce the effect of Warfarin. Doctor supervision and INR monitoring are recommended, especially when starting a new medicine.";
+  }
+
+  return "This item may interact with Warfarin. Use should be evaluated with a doctor.";
+};
+
+export const localizeInteractionItems = (
+  items: InteractionItem[],
+  type: "food" | "drug",
+  language: "tr" | "en"
+) => {
+  if (language !== "en") {
+    return items;
+  }
+
+  return items.map((item) => ({
+    name:
+      type === "food"
+        ? foodNameEn[item.name] ?? item.name
+        : drugNameEn[item.name] ?? item.name,
+    category: translateCategory(item.category, type),
+    detail: type === "food" ? translateFoodDetail(item) : translateDrugDetail(item),
+  }));
+};

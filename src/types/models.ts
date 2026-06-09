@@ -11,6 +11,7 @@ export type UserProfile = {
   targetInrMax?: number;
   currentWeeklyDoseMg?: number;
   themeMode?: "light" | "dark";
+  language?: "tr" | "en";
   requiresInitialIndication?: boolean;
 };
 

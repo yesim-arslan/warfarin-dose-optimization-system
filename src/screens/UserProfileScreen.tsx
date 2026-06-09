@@ -16,12 +16,14 @@ import { useNavigation } from "@react-navigation/native";
 import { AppThemeColors, useTheme } from "../theme/ThemeContext";
 import IndicationSelect from "../components/IndicationSelect";
 import { requestHomeMenuOpen } from "../navigation/menuReturn";
+import { useLanguage } from "../i18n/LanguageContext";
 
 export default function UserProfileScreen() {
   const [indication, setIndication] = useState<TherapyIndication | "">("");
   const [weeklyDose, setWeeklyDose] = useState("");
   const navigation = useNavigation<any>();
   const { colors } = useTheme();
+  const { t } = useLanguage();
   const styles = createStyles(colors);
 
   useEffect(() => {
@@ -54,17 +56,17 @@ export default function UserProfileScreen() {
     const user = auth.currentUser;
 
     if (!user) {
-      Alert.alert("Hata", "Kullanıcı bulunamadı.");
+      Alert.alert(t("error"), t("userNotFound"));
       return;
     }
 
     if (!indication) {
-      Alert.alert("Eksik bilgi", "Lütfen kullanım nedenini gir.");
+      Alert.alert(t("missingInfo"), t("enterReason"));
       return;
     }
 
     if (!weeklyDose || isNaN(Number(weeklyDose))) {
-      Alert.alert("Eksik bilgi", "Lütfen geçerli bir haftalık doz gir.");
+      Alert.alert(t("missingInfo"), t("enterValidWeeklyDose"));
       return;
     }
 
@@ -75,9 +77,9 @@ export default function UserProfileScreen() {
         requiresInitialIndication: false,
       });
 
-      Alert.alert("Başarılı", "Profil kaydedildi.", [
+      Alert.alert(t("success"), t("profileSaved"), [
         {
-            text: "Tamam",
+            text: t("ok"),
             onPress: () =>
               navigation.reset({
                 index: 0,
@@ -87,7 +89,7 @@ export default function UserProfileScreen() {
     ]);
     } catch (error) {
       console.error(error);
-      Alert.alert("Hata", "Profil kaydedilemedi.");
+      Alert.alert(t("error"), t("profileSaveError"));
     }
   };
 
@@ -101,16 +103,16 @@ export default function UserProfileScreen() {
             navigation.goBack();
           }}
         >
-          <Text style={styles.backButtonText}>← Geri</Text>
+          <Text style={styles.backButtonText}>{t("back")}</Text>
         </TouchableOpacity>
 
-        <Text style={styles.title}>Profil Bilgileri</Text>
+        <Text style={styles.title}>{t("profileTitle")}</Text>
 
-        <Text style={styles.label}>INR Takip Sebebi</Text>
+        <Text style={styles.label}>{t("indicationReason")}</Text>
         <IndicationSelect
           value={indication}
           onChange={setIndication}
-          placeholder="Takip sebebi seçilmemiş"
+          placeholder={t("indicationPlaceholder")}
           colors={{
             background: colors.inputBackground,
             border: colors.border,
@@ -122,7 +124,7 @@ export default function UserProfileScreen() {
           }}
         />
 
-        <Text style={styles.label}>Haftalık Toplam Doz (mg)</Text>
+        <Text style={styles.label}>{t("weeklyTotalDose")}</Text>
         <TextInput
           style={styles.input}
           value={weeklyDose}
@@ -133,19 +135,19 @@ export default function UserProfileScreen() {
         />
 
         <TouchableOpacity style={styles.button} onPress={handleSave}>
-          <Text style={styles.buttonText}>Kaydet</Text>
+          <Text style={styles.buttonText}>{t("save")}</Text>
         </TouchableOpacity>
       </View>
 
       <TouchableOpacity style={styles.signOutButton} onPress={() => signOut(auth)}>
-        <Text style={styles.signOutButtonText}>Çıkış Yap</Text>
+        <Text style={styles.signOutButtonText}>{t("signOut")}</Text>
       </TouchableOpacity>
 
       <TouchableOpacity
         style={styles.deleteNavButton}
         onPress={() => navigation.navigate("DeleteAccount")}
       >
-        <Text style={styles.deleteNavButtonText}>Hesabımı Sil</Text>
+        <Text style={styles.deleteNavButtonText}>{t("deleteMyAccount")}</Text>
       </TouchableOpacity>
     </ScrollView>
   );

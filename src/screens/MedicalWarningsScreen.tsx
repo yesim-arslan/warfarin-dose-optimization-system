@@ -2,13 +2,14 @@ import React from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import {
-  WARNING_MESSAGES,
+  getWarningMessageCatalog,
   WarningLevel,
 } from "../algorithms/warningMessages";
 import { AppThemeColors, ThemeMode, useTheme } from "../theme/ThemeContext";
 import { requestHomeMenuOpen } from "../navigation/menuReturn";
+import { useLanguage } from "../i18n/LanguageContext";
 
-const levelInfo: Record<
+const levelInfoTr: Record<
   WarningLevel,
   {
     label: string;
@@ -37,12 +38,37 @@ const levelInfo: Record<
   },
 };
 
-const warningCodes = Object.keys(WARNING_MESSAGES);
+const levelInfoEn: typeof levelInfoTr = {
+  critical: {
+    label: "Red Warning",
+    description:
+      "Indicates an urgent or critical situation. You may need to contact your doctor immediately or go to emergency care.",
+  },
+  danger: {
+    label: "Orange Warning",
+    description:
+      "Requires attention for bleeding or significant dose risk. Follow the recommendation on the screen carefully and monitor symptoms.",
+  },
+  warning: {
+    label: "Yellow Warning",
+    description:
+      "INR may be outside the target range. Dose, nutrition, or control timing should be followed carefully.",
+  },
+  info: {
+    label: "Blue Information",
+    description:
+      "An informational reminder for medication use, control timing, or daily tracking.",
+  },
+};
 
 export default function MedicalWarningsScreen() {
   const navigation = useNavigation<any>();
   const { colors, mode } = useTheme();
+  const { language, t } = useLanguage();
   const styles = createStyles(colors, mode);
+  const levelInfo = language === "en" ? levelInfoEn : levelInfoTr;
+  const warningMessages = getWarningMessageCatalog(language);
+  const warningCodes = Object.keys(warningMessages);
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
@@ -53,13 +79,15 @@ export default function MedicalWarningsScreen() {
           navigation.goBack();
         }}
       >
-        <Text style={styles.backButtonText}>← Geri</Text>
+        <Text style={styles.backButtonText}>{t("back")}</Text>
       </Pressable>
 
-      <Text style={styles.title}>Tıbbi Uyarılar</Text>
+      <Text style={styles.title}>{t("medicalWarnings")}</Text>
 
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Renklerin Anlamı</Text>
+        <Text style={styles.cardTitle}>
+          {language === "en" ? "Meaning of Colors" : "Renklerin Anlamı"}
+        </Text>
 
         {(Object.keys(levelInfo) as WarningLevel[]).map((level) => (
           <View key={level} style={styles.levelRow}>
@@ -75,14 +103,17 @@ export default function MedicalWarningsScreen() {
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Uyarı Kodları</Text>
+        <Text style={styles.cardTitle}>
+          {language === "en" ? "Warning Codes" : "Uyarı Kodları"}
+        </Text>
         <Text style={styles.paragraph}>
-          U kodları, INR değerine ve doz önerisine göre ekranda gösterilen
-          tıbbi dikkat mesajlarını ifade eder.
+          {language === "en"
+            ? "U codes represent medical attention messages shown on the screen according to the INR value and dose recommendation."
+            : "U kodları, INR değerine ve doz önerisine göre ekranda gösterilen tıbbi dikkat mesajlarını ifade eder."}
         </Text>
 
         {warningCodes.map((code) => {
-          const warning = WARNING_MESSAGES[code];
+          const warning = warningMessages[code];
 
           return (
             <View key={code} style={styles.warningItem}>

@@ -12,6 +12,7 @@ import { useNavigation } from "@react-navigation/native";
 import { InteractionItem } from "../constants/interactionLists";
 import { AppThemeColors, useTheme } from "../theme/ThemeContext";
 import { requestHomeMenuOpen } from "../navigation/menuReturn";
+import { useLanguage } from "../i18n/LanguageContext";
 
 type InteractionListScreenProps = {
   title: string;
@@ -28,6 +29,7 @@ export default function InteractionListScreen({
 }: InteractionListScreenProps) {
   const navigation = useNavigation<any>();
   const { colors } = useTheme();
+  const { t } = useLanguage();
   const styles = createStyles(colors);
   const [searchText, setSearchText] = useState("");
   const [selectedItem, setSelectedItem] = useState<InteractionItem | null>(null);
@@ -56,7 +58,7 @@ export default function InteractionListScreen({
             navigation.goBack();
           }}
         >
-          <Text style={styles.backButtonText}>← Geri</Text>
+          <Text style={styles.backButtonText}>{t("back")}</Text>
         </Pressable>
         <Text style={styles.headerTitle}>{title}</Text>
       </View>

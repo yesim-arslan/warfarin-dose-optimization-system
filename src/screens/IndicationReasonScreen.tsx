@@ -11,6 +11,7 @@ import { auth } from "../services/firebase";
 import { updateUserProfile } from "../services/firestore";
 import { Indication } from "../algorithms/doseTypes";
 import IndicationSelect from "../components/IndicationSelect";
+import { useLanguage } from "../i18n/LanguageContext";
 
 export default function IndicationReasonScreen() {
   const navigation = useNavigation<any>();
@@ -18,17 +19,18 @@ export default function IndicationReasonScreen() {
     ""
   );
   const [isSaving, setIsSaving] = useState(false);
+  const { t } = useLanguage();
 
   const handleContinue = async () => {
     const user = auth.currentUser;
 
     if (!user) {
-      Alert.alert("Hata", "Kullanıcı bulunamadı.");
+      Alert.alert(t("error"), t("userNotFound"));
       return;
     }
 
     if (!selectedIndication) {
-      Alert.alert("Eksik bilgi", "Lütfen INR takip sebebini seç.");
+      Alert.alert(t("missingInfo"), t("selectIndication"));
       return;
     }
 
@@ -41,7 +43,7 @@ export default function IndicationReasonScreen() {
       navigation.navigate("Home");
     } catch (error) {
       console.error(error);
-      Alert.alert("Hata", "INR takip sebebi kaydedilemedi.");
+      Alert.alert(t("error"), t("indicationSaveError"));
     } finally {
       setIsSaving(false);
     }
@@ -49,7 +51,7 @@ export default function IndicationReasonScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>INR Takibi{"\n"}Sebebiniz</Text>
+      <Text style={styles.title}>{t("indicationScreenTitle")}</Text>
 
       <IndicationSelect
         value={selectedIndication}
@@ -71,7 +73,7 @@ export default function IndicationReasonScreen() {
         disabled={!selectedIndication || isSaving}
       >
         <Text style={styles.buttonText}>
-          {isSaving ? "Kaydediliyor..." : "Devam Et"}
+          {isSaving ? t("saving") : t("continue")}
         </Text>
       </Pressable>
     </View>

@@ -1,7 +1,8 @@
 import React, { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Indication } from "../algorithms/doseTypes";
-import { getIndicationLabel, indicationOptions } from "../constants/indications";
+import { indicationOptions } from "../constants/indications";
+import { useLanguage } from "../i18n/LanguageContext";
 
 type IndicationSelectProps = {
   value: Indication | "";
@@ -21,12 +22,21 @@ type IndicationSelectProps = {
 export default function IndicationSelect({
   value,
   onChange,
-  placeholder = "Lütfen seçiniz.",
+  placeholder,
   colors,
 }: IndicationSelectProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const { t } = useLanguage();
+  const indicationLabels: Record<Indication, string> = {
+    af_stroke: t("indicationAfStroke"),
+    single_valve: t("indicationSingleValve"),
+    double_valve: t("indicationDoubleValve"),
+    thrombosis: t("indicationThrombosis"),
+  };
 
-  const selectedLabel = value ? getIndicationLabel(value) : placeholder;
+  const selectedLabel = value
+    ? indicationLabels[value] ?? t("notSelected")
+    : placeholder ?? t("selectIndication");
 
   return (
     <View style={styles.wrapper}>
@@ -86,7 +96,7 @@ export default function IndicationSelect({
                     isSelected && styles.optionTextSelected,
                   ]}
                 >
-                  {option.label}
+                  {indicationLabels[option.value]}
                 </Text>
               </Pressable>
             );

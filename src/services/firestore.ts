@@ -102,6 +102,14 @@ export const updateUserThemeMode = async (
   await setDoc(userRef, { themeMode }, { merge: true });
 };
 
+export const updateUserLanguage = async (
+  uid: string,
+  language: NonNullable<UserProfile["language"]>
+) => {
+  const userRef = doc(db, "users", uid);
+  await setDoc(userRef, { language }, { merge: true });
+};
+
 export const deleteUserData = async (uid: string) => {
   const collectionsToClear = ["inrRecords", "recommendations"];
   const batch = writeBatch(db);

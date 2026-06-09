@@ -1,14 +1,17 @@
 import React from "react";
-import { drugInteractions } from "../constants/interactionLists";
+import { drugInteractions, localizeInteractionItems } from "../constants/interactionLists";
 import InteractionListScreen from "./InteractionListScreen";
+import { useLanguage } from "../i18n/LanguageContext";
 
 export default function DrugInteractionsScreen() {
+  const { language, t } = useLanguage();
+
   return (
     <InteractionListScreen
-      title="INR'yi Etkileyen İlaçlar"
-      searchPlaceholder="İlaç ara"
-      notFoundText="Aradığınız ilaç bulunamadı. Detaylı bilgi için doktorunuza başvurunuz."
-      items={drugInteractions}
+      title={t("affectingDrugsTitle")}
+      searchPlaceholder={t("searchDrug")}
+      notFoundText={t("drugNotFound")}
+      items={localizeInteractionItems(drugInteractions, "drug", language)}
     />
   );
 }

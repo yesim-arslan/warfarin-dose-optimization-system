@@ -12,10 +12,12 @@ import { calculateDose } from "../algorithms/doseCalculator";
 import { AppThemeColors, useTheme } from "../theme/ThemeContext";
 import { auth } from "../services/firebase";
 import { addInrRecord, getUserProfile } from "../services/firestore";
+import { useLanguage } from "../i18n/LanguageContext";
 
 export default function EnterInrScreen() {
   const navigation = useNavigation<any>();
   const { colors } = useTheme();
+  const { t } = useLanguage();
   const styles = createStyles(colors);
 
   // Başlangıç değeri
@@ -36,12 +38,12 @@ export default function EnterInrScreen() {
     const inrValue = parseFloat(selectedInr);
 
     if (!user) {
-      Alert.alert("Hata", "INR kaydı için giriş yapmış olman gerekiyor.");
+      Alert.alert(t("error"), t("loginRequiredForInr"));
       return;
     }
 
     if (isNaN(inrValue)) {
-      Alert.alert("Hata", "Lütfen geçerli bir INR değeri seç.");
+      Alert.alert(t("error"), t("selectValidInr"));
       return;
     }
 
@@ -59,8 +61,8 @@ export default function EnterInrScreen() {
 
       if (!profile?.indication) {
         Alert.alert(
-          "Eksik bilgi",
-          "Doz hesaplamak için INR takip sebebini seçmen gerekiyor."
+          t("missingInfo"),
+          t("selectIndicationForDose")
         );
         navigation.navigate("IndicationReason");
         return;
@@ -84,8 +86,8 @@ export default function EnterInrScreen() {
     } catch (error) {
       console.error(error);
       Alert.alert(
-        "Hata",
-        "INR değeri kaydedilemedi. Lütfen internet bağlantını kontrol edip tekrar dene."
+        t("error"),
+        t("inrSaveError")
       );
     } finally {
       setIsSaving(false);
@@ -98,12 +100,12 @@ export default function EnterInrScreen() {
         style={styles.backButton}
         onPress={() => navigation.navigate("Home")}
       >
-        <Text style={styles.backButtonText}>← Ana Sayfaya Dön</Text>
+        <Text style={styles.backButtonText}>{t("backHome")}</Text>
       </Pressable>
 
       <View style={styles.formContent}>
-        <Text style={styles.title}>INR Girişi</Text>
-        <Text style={styles.label}>Yeni INR Değeri</Text>
+        <Text style={styles.title}>{t("inrEntry")}</Text>
+        <Text style={styles.label}>{t("newInrValue")}</Text>
 
         <View style={styles.pickerWrapper}>
           <Picker
@@ -122,7 +124,9 @@ export default function EnterInrScreen() {
           </Picker>
         </View>
 
-        <Text style={styles.selectedText}>Seçilen INR: {selectedInr}</Text>
+        <Text style={styles.selectedText}>
+          {t("selectedInr", { value: selectedInr })}
+        </Text>
 
         <Pressable
           style={[styles.button, isSaving && styles.disabledButton]}
@@ -130,7 +134,7 @@ export default function EnterInrScreen() {
           disabled={isSaving}
         >
           <Text style={styles.buttonText}>
-            {isSaving ? "Kaydediliyor..." : "Hesapla"}
+            {isSaving ? t("saving") : t("calculate")}
           </Text>
         </Pressable>
       </View>

@@ -19,6 +19,7 @@ import { auth } from "../services/firebase";
 import { getLatestInrRecord, getUserProfile } from "../services/firestore";
 import { InrRecord, UserProfile } from "../types/models";
 import { consumeHomeMenuOpenRequest } from "../navigation/menuReturn";
+import { useLanguage } from "../i18n/LanguageContext";
 
 const parseNextCheckInDays = (nextCheck?: string) => {
   if (!nextCheck) {
@@ -57,20 +58,82 @@ const addDays = (date: Date, days: number) => {
 const startOfDay = (date: Date) =>
   new Date(date.getFullYear(), date.getMonth(), date.getDate());
 
+const translateDoseText = (
+  value: string | undefined,
+  language: "tr" | "en"
+) => {
+  if (!value || language !== "en") {
+    return value;
+  }
+
+  const normalized = value.toLocaleLowerCase("tr-TR");
+  const dayControlMatch = normalized.match(/(\d+)\.\s*gün\s*[iı]nr kontrolü/);
+  const dayAfterMatch = normalized.match(/(\d+)\s*gün sonra/);
+  const waitDaysMatch = normalized.match(/(\d+)\s*gün bekle/);
+
+  if (normalized === "ayni doz devam" || normalized === "aynı doz devam") {
+    return "Continue same dose";
+  }
+
+  if (normalized.includes("1 ay sonra")) {
+    return "1 month later";
+  }
+
+  if (normalized.includes("1 hafta sonra")) {
+    return "1 week later";
+  }
+
+  if (dayControlMatch) {
+    return `INR control on day ${dayControlMatch[1]}`;
+  }
+
+  if (dayAfterMatch) {
+    return `${dayAfterMatch[1]} days later`;
+  }
+
+  if (waitDaysMatch) {
+    return `Wait ${waitDaysMatch[1]} days`;
+  }
+
+  if (normalized.includes("ilaç stop")) {
+    return value
+      .replace(/İlaç STOP/gi, "Medication STOP")
+      .replace(/(\d+)\s*gün bekle/gi, "Wait $1 days")
+      .replace(/sonra haftalık toplam dozu azaltarak devam et/gi, "then continue with a reduced weekly total dose");
+  }
+
+  if (normalized.includes("haftalık toplam doz artırılmalı")) {
+    return normalized.includes("iğne tedavisi")
+      ? "Weekly total dose should be increased and distributed across the week; injection treatment may be needed"
+      : "Weekly total dose should be increased and distributed across the week";
+  }
+
+  if (normalized.includes("haftalık toplam doz azaltılmalı")) {
+    return "Weekly total dose should be reduced and distributed across the week";
+  }
+
+  if (normalized.includes("1 gün doz atla")) {
+    return "Skip 1 dose day, then continue with a reduced weekly total dose";
+  }
+
+  return value;
+};
+
 const getControlCountdownLabel = (
   measuredAt?: string,
-  nextCheck?: string
+  nextCheck?: string,
+  t?: (key: any, params?: Record<string, string | number>) => string
 ) => {
   const nextCheckInDays = parseNextCheckInDays(nextCheck);
 
   if (!measuredAt || nextCheckInDays == null) {
-    return "Henüz ölçüm yok";
+    return t ? t("noMeasurement") : "Henüz ölçüm yok";
   }
 
   const measuredDate = new Date(measuredAt);
 
   if (Number.isNaN(measuredDate.getTime())) {
-    return "Henüz ölçüm yok";
+    return t ? t("noMeasurement") : "Henüz ölçüm yok";
   }
 
   const controlDate = startOfDay(addDays(measuredDate, nextCheckInDays));
@@ -80,14 +143,14 @@ const getControlCountdownLabel = (
   );
 
   if (remainingDays < 0) {
-    return "Kontrol zamanı geçti";
+    return t ? t("controlOverdue") : "Kontrol zamanı geçti";
   }
 
   if (remainingDays === 0) {
-    return "Bugün kontrol günü";
+    return t ? t("controlToday") : "Bugün kontrol günü";
   }
 
-  return `${remainingDays} Gün Kaldı`;
+  return t ? t("daysLeft", { count: remainingDays }) : `${remainingDays} Gün Kaldı`;
 };
 
 type MenuIconType =
@@ -104,6 +167,7 @@ export default function HomeScreen() {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
   const { colors, mode } = useTheme();
+  const { language, t } = useLanguage();
   const styles = createStyles(colors, mode);
 
   const [infoModalVisible, setInfoModalVisible] = useState(false);
@@ -299,28 +363,38 @@ export default function HomeScreen() {
 
   const targetLabel = route.params?.targetLabel ?? savedDoseResult?.targetLabel;
   const inrStatusLabel = targetLabel
-    ? `Hedef: ${targetLabel}`
+    ? `${t("targetPrefix")}: ${targetLabel}`
     : currentInr != null
-      ? "Lütfen INR takip nedeninizi seçiniz"
-      : "Henüz ölçüm yok";
+      ? t("selectIndicationWarning")
+      : t("noMeasurement");
   const suggestedWeeklyDoseMg =
     route.params?.suggestedWeeklyDoseMg ??
     savedDoseResult?.suggestedWeeklyDoseMg;
   const action = route.params?.action ?? savedDoseResult?.action;
   const warnings = route.params?.warnings ?? savedDoseResult?.warnings;
-  const warningMessages = getWarningMessages(warnings);
+  const warningMessages = getWarningMessages(warnings, language);
   const highestWarning =
     warningMessages.find((w) => w.level === "critical") ||
     warningMessages.find((w) => w.level === "danger") ||
     warningMessages.find((w) => w.level === "warning") ||
     warningMessages.find((w) => w.level === "info");
   const nextCheck = route.params?.nextCheck ?? savedDoseResult?.nextCheck;
+  const displayedNextCheck = translateDoseText(nextCheck, language);
+  const displayedAction = translateDoseText(action, language);
   const measuredAt = route.params?.measuredAt ?? latestInrRecord?.measuredAt;
-  const controlCountdownLabel = getControlCountdownLabel(measuredAt, nextCheck);
+  const controlCountdownLabel = getControlCountdownLabel(measuredAt, nextCheck, t);
   const weeklySchedule =
     suggestedWeeklyDoseMg != null
       ? generateWeeklySchedule(suggestedWeeklyDoseMg)
       : [];
+  const dayLabels =
+    language === "en"
+      ? ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+      : ["Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz"];
+  const localizedWeeklySchedule = weeklySchedule.map((item, index) => ({
+    ...item,
+    day: dayLabels[index] ?? item.day,
+  }));
 
   const jsDay = new Date().getDay();
   const todayIndex = jsDay === 0 ? 6 : jsDay - 1;
@@ -344,7 +418,7 @@ export default function HomeScreen() {
   const monthNumber = today.toLocaleDateString("tr-TR", {
     month: "2-digit",
   });
-  const dayName = today.toLocaleDateString("tr-TR", {
+  const dayName = today.toLocaleDateString(language === "en" ? "en-US" : "tr-TR", {
     weekday: "long",
   });
   const todayDayLabel = `${dayNumber}.${monthNumber} ${dayName}`;
@@ -354,7 +428,7 @@ export default function HomeScreen() {
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.container}>
           <View style={styles.headerRow}>
-            <Text style={styles.headerTitle}>INR Takip</Text>
+            <Text style={styles.headerTitle}>{t("homeTitle")}</Text>
 
             <Pressable
               style={styles.menuButton}
@@ -380,7 +454,7 @@ export default function HomeScreen() {
               />
             </Pressable>
           </View>
-          <Text style={styles.headerSubtitle}>Ana Sayfa</Text>
+          <Text style={styles.headerSubtitle}>{t("homeSubtitle")}</Text>
           {highestWarning && (
             <View
               style={[
@@ -410,19 +484,19 @@ export default function HomeScreen() {
           )}
 
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>Bir sonraki kontrole</Text>
+            <Text style={styles.cardTitle}>{t("nextControl")}</Text>
             <Text style={styles.bigText}>{controlCountdownLabel}</Text>
             <Text style={styles.helperText}>
               {nextCheck
-                ? `Önerilen kontrol: ${nextCheck}`
-                : "INR değeri girildiğinde kontrol zamanı hesaplanır"}
+                ? `${t("nextCheck")}: ${displayedNextCheck}`
+                : t("controlWhenInrEntered")}
             </Text>
           </View>
 
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>Haftalık İlaç Dozu Takvimi</Text>
+            <Text style={styles.cardTitle}>{t("weeklyDoseSchedule")}</Text>
             <Text style={styles.helperText}>
-              Haftalık doz dağılımı burada gösterilecek
+              {t("weeklyDoseDistributionPlaceholder")}
             </Text>
 
             <View style={[styles.todayDoseBox, isStopMode && styles.todayDoseBoxStop]}>
@@ -432,21 +506,21 @@ export default function HomeScreen() {
                     {todayDayLabel}
                   </Text>
                   <View style={styles.stopTextGroup}>
-                    <Text style={styles.stopTitle}>İLAÇ STOP</Text>
-                    <Text style={styles.stopInfo}>{stopInfo}</Text>
-                    <Text style={styles.stopCheck}>{nextCheck}</Text>
+                    <Text style={styles.stopTitle}>{t("drugStop")}</Text>
+                    <Text style={styles.stopInfo}>{translateDoseText(stopInfo, language)}</Text>
+                    <Text style={styles.stopCheck}>{displayedNextCheck}</Text>
                   </View>
                 </View>
               ) : (
                 <>
                   <View style={styles.todayDoseLeft}>
                     <Text style={styles.todayDate}>{todayDayLabel}</Text>
-                    <Text style={styles.todayTitle}>Bugünün{"\n"}Dozu</Text>
+                    <Text style={styles.todayTitle}>{t("todayDose")}</Text>
                   </View>
 
                   <View style={styles.todayDoseRight}>
                     <Text style={styles.todayDoseText}>
-                      {todayVisual.tabletCount} tablet | {todayVisual.mg} mg
+                      {todayVisual.tabletCount} {t("tablet")} | {todayVisual.mg} mg
                     </Text>
 
                     <View style={styles.tabletsRow}>
@@ -472,8 +546,8 @@ export default function HomeScreen() {
             </View>
 
             <View style={styles.dayRow}>
-              {weeklySchedule.length > 0 ? (
-                weeklySchedule.map((item: any, index: number) => (
+              {localizedWeeklySchedule.length > 0 ? (
+                localizedWeeklySchedule.map((item: any, index: number) => (
                   <View key={`${item.day}-${index}`} style={styles.dayBox}>
                     <Text style={styles.dayName}>{item.day}</Text>
                     <Text style={styles.dayDose}>{item.dose}</Text>
@@ -482,52 +556,24 @@ export default function HomeScreen() {
                 ))
               ) : (
                 <>
-                  <View style={styles.dayBox}>
-                    <Text style={styles.dayName}>Pzt</Text>
+                  {dayLabels.map((dayLabel) => (
+                  <View key={dayLabel} style={styles.dayBox}>
+                    <Text style={styles.dayName}>{dayLabel}</Text>
                     <Text style={styles.dayDose}>-</Text>
                     <Text style={styles.dayDoseUnit}>mg</Text>
                   </View>
-                  <View style={styles.dayBox}>
-                    <Text style={styles.dayName}>Sal</Text>
-                    <Text style={styles.dayDose}>-</Text>
-                    <Text style={styles.dayDoseUnit}>mg</Text>
-                  </View>
-                  <View style={styles.dayBox}>
-                    <Text style={styles.dayName}>Çar</Text>
-                    <Text style={styles.dayDose}>-</Text>
-                    <Text style={styles.dayDoseUnit}>mg</Text>
-                  </View>
-                  <View style={styles.dayBox}>
-                    <Text style={styles.dayName}>Per</Text>
-                    <Text style={styles.dayDose}>-</Text>
-                    <Text style={styles.dayDoseUnit}>mg</Text>
-                  </View>
-                  <View style={styles.dayBox}>
-                    <Text style={styles.dayName}>Cum</Text>
-                    <Text style={styles.dayDose}>-</Text>
-                    <Text style={styles.dayDoseUnit}>mg</Text>
-                  </View>
-                  <View style={styles.dayBox}>
-                    <Text style={styles.dayName}>Cmt</Text>
-                    <Text style={styles.dayDose}>-</Text>
-                    <Text style={styles.dayDoseUnit}>mg</Text>
-                  </View>
-                  <View style={styles.dayBox}>
-                    <Text style={styles.dayName}>Paz</Text>
-                    <Text style={styles.dayDose}>-</Text>
-                    <Text style={styles.dayDoseUnit}>mg</Text>
-                  </View>
+                  ))}
                 </>
               )}
             </View>
           </View>
 
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>INR Seviyesi</Text>
+            <Text style={styles.cardTitle}>{t("inrLevel")}</Text>
 
             <View style={styles.inrRow}>
               <View style={styles.inrBoxHalf}>
-                <Text style={styles.inrLabel}>Güncel INR</Text>
+                <Text style={styles.inrLabel}>{t("currentInr")}</Text>
 
                 <Text style={styles.inrValue}>
                   {currentInr ? currentInr : "-"}
@@ -542,16 +588,21 @@ export default function HomeScreen() {
                   onPress={() => navigation.navigate("InrHistory")}
                 >
                   <Text style={styles.inrHistoryLinkText}>
-                    ⓘ INR geçmişi
+                    {t("inrHistoryLink")}
                   </Text>
                 </Pressable>
               </View>
 
               <View style={styles.resultBoxHalf}>
                 <View style={styles.resultHeader}>
-                  <Text style={styles.resultTitle}>Tedavi Önerisi</Text>
+                  <Text style={styles.resultTitle} numberOfLines={1}>
+                    {t("treatmentRecommendation")}
+                  </Text>
 
-                  <Pressable onPress={() => setInfoModalVisible(true)}>
+                  <Pressable
+                    style={styles.infoButton}
+                    onPress={() => setInfoModalVisible(true)}
+                  >
                     <Text style={styles.infoIcon}>ⓘ</Text>
                   </Pressable>
                 </View>
@@ -559,7 +610,7 @@ export default function HomeScreen() {
                 {action ? (
                   <>
                     <Text style={styles.resultLabel}>
-                      Yeni Haftalık Doz
+                      {t("weeklyDose")}
                     </Text>
 
                     <Text style={styles.resultDose}>
@@ -567,16 +618,16 @@ export default function HomeScreen() {
                     </Text>
 
                     <Text style={styles.resultLabel}>
-                      Sonraki Kontrol
+                      {t("nextCheck")}
                     </Text>
 
                     <Text style={styles.resultCheck}>
-                      {nextCheck}
+                      {displayedNextCheck}
                     </Text>
                   </>
                 ) : (
                   <Text style={styles.resultPlaceholder}>
-                    Henüz hesaplama yapılmadı
+                    {t("noMeasurement")}
                   </Text>
                 )}
               </View>
@@ -586,7 +637,7 @@ export default function HomeScreen() {
               style={styles.primaryButton}
               onPress={() => navigation.navigate("EnterInr")}
             >
-              <Text style={styles.primaryButtonText}>INR Girişi</Text>
+              <Text style={styles.primaryButtonText}>{t("inrEntry")}</Text>
             </Pressable>
           </View>
 
@@ -601,14 +652,14 @@ export default function HomeScreen() {
 
           <Animated.View style={[styles.menuPanel, menuPanelAnimatedStyle]}>
             <View style={styles.menuPanelHeader}>
-              <Text style={styles.menuTitle}>Menü</Text>
+              <Text style={styles.menuTitle}>{t("menu")}</Text>
             </View>
 
             <ScrollView
               style={styles.menuActionsScroll}
               contentContainerStyle={styles.menuActions}
             >
-              <Text style={styles.menuSectionLabel}>Hesap</Text>
+              <Text style={styles.menuSectionLabel}>{t("account")}</Text>
 
               <Pressable
                 style={styles.menuActionButton}
@@ -617,7 +668,7 @@ export default function HomeScreen() {
                 }}
               >
                 {renderMenuIcon("profile")}
-                <Text style={styles.menuActionText}>Profil Bilgileri</Text>
+                <Text style={styles.menuActionText}>{t("profileInfo")}</Text>
               </Pressable>
 
               <Pressable
@@ -627,10 +678,10 @@ export default function HomeScreen() {
                 }}
               >
                 {renderMenuIcon("settings")}
-                <Text style={styles.menuActionText}>Ayarlar</Text>
+                <Text style={styles.menuActionText}>{t("settings")}</Text>
               </Pressable>
 
-              <Text style={styles.menuSectionLabel}>Referans Listeleri</Text>
+              <Text style={styles.menuSectionLabel}>{t("referenceLists")}</Text>
 
               <Pressable
                 style={styles.menuActionButton}
@@ -639,7 +690,7 @@ export default function HomeScreen() {
                 }}
               >
                 {renderMenuIcon("drug")}
-                <Text style={styles.menuActionText}>Etkileyen İlaçlar</Text>
+                <Text style={styles.menuActionText}>{t("affectingDrugs")}</Text>
               </Pressable>
 
               <Pressable
@@ -649,10 +700,10 @@ export default function HomeScreen() {
                 }}
               >
                 {renderMenuIcon("food")}
-                <Text style={styles.menuActionText}>Etkileyen Gıdalar</Text>
+                <Text style={styles.menuActionText}>{t("affectingFoods")}</Text>
               </Pressable>
 
-              <Text style={styles.menuSectionLabel}>Bilgi ve Güvenlik</Text>
+              <Text style={styles.menuSectionLabel}>{t("infoSecurity")}</Text>
 
               <Pressable
                 style={styles.menuActionButton}
@@ -661,7 +712,7 @@ export default function HomeScreen() {
                 }}
               >
                 {renderMenuIcon("warning")}
-                <Text style={styles.menuActionText}>Tıbbi Uyarılar</Text>
+                <Text style={styles.menuActionText}>{t("medicalWarnings")}</Text>
               </Pressable>
 
               <Pressable
@@ -671,7 +722,7 @@ export default function HomeScreen() {
                 }}
               >
                 {renderMenuIcon("privacy")}
-                <Text style={styles.menuActionText}>Gizlilik Politikası</Text>
+                <Text style={styles.menuActionText}>{t("privacyPolicy")}</Text>
               </Pressable>
 
               <Pressable
@@ -681,7 +732,7 @@ export default function HomeScreen() {
                 }}
               >
                 {renderMenuIcon("about")}
-                <Text style={styles.menuActionText}>Hakkında</Text>
+                <Text style={styles.menuActionText}>{t("about")}</Text>
               </Pressable>
 
               <Pressable
@@ -691,7 +742,7 @@ export default function HomeScreen() {
                 }}
               >
                 {renderMenuIcon("help")}
-                <Text style={styles.menuActionText}>Yardım</Text>
+                <Text style={styles.menuActionText}>{t("help")}</Text>
               </Pressable>
             </ScrollView>
           </Animated.View>
@@ -714,29 +765,29 @@ export default function HomeScreen() {
     >
       <View style={styles.modalOverlay}>
         <View style={styles.modalContent}>
-          <Text style={styles.modalTitle}>Tedavi Detayı</Text>
+          <Text style={styles.modalTitle}>{t("treatmentDetail")}</Text>
 
           <Text style={styles.modalText}>
-            Yeni Doz: {suggestedWeeklyDoseMg} mg
+            {t("weeklyDose")}: {suggestedWeeklyDoseMg} mg
           </Text>
 
           <Text style={styles.modalText}>
-            Aksiyon: {action}
+            {t("action")}: {displayedAction}
           </Text>
 
           <Text style={styles.modalText}>
-            Uyarılar: {warnings?.join(", ") || "-"}
+            {t("warnings")}: {warnings?.join(", ") || "-"}
           </Text>
 
           <Text style={styles.modalText}>
-            Kontrol: {nextCheck}
+            {t("nextCheck")}: {displayedNextCheck}
           </Text>
 
           <Pressable
             style={styles.modalButton}
             onPress={() => setInfoModalVisible(false)}
           >
-            <Text style={styles.modalButtonText}>Kapat</Text>
+            <Text style={styles.modalButtonText}>{t("close")}</Text>
           </Pressable>
         </View>
       </View>
@@ -748,6 +799,13 @@ export default function HomeScreen() {
 const createStyles = (colors: AppThemeColors, mode: ThemeMode) => {
   const inrButtonOrange = "#d89b1d";
   const emptyTabletColor = mode === "dark" ? "#F4F8F9" : "#F2D4A4";
+  const todayDoseBlue = "#A9BDC8";
+  const todayDoseTextBlue = "#2F667C";
+  const menuPanelBackground = mode === "dark" ? todayDoseBlue : colors.primary;
+  const menuPanelText = mode === "dark" ? todayDoseTextBlue : "#ffffff";
+  const menuSectionText =
+    mode === "dark" ? "rgba(47,102,124,0.78)" : "rgba(255,255,255,0.78)";
+  const menuActionTextColor = mode === "dark" ? "#EAF2F6" : colors.primary;
 
   return StyleSheet.create({
   safeArea: {
@@ -758,7 +816,7 @@ const createStyles = (colors: AppThemeColors, mode: ThemeMode) => {
     padding: 20,
   },
   container: {
-    gap: 16,
+    gap: 12,
   },
   headerRow: {
     position: "relative",
@@ -799,7 +857,7 @@ const createStyles = (colors: AppThemeColors, mode: ThemeMode) => {
     backgroundColor: colors.primary,
   },
   menuLineOpen: {
-    backgroundColor: "#ffffff",
+    backgroundColor: menuPanelText,
   },
   menuDismissArea: {
     position: "absolute",
@@ -816,7 +874,7 @@ const createStyles = (colors: AppThemeColors, mode: ThemeMode) => {
     bottom: 0,
     width: "78%",
     zIndex: 20,
-    backgroundColor: colors.primary,
+    backgroundColor: menuPanelBackground,
     paddingHorizontal: 24,
     paddingTop: 28,
     borderTopLeftRadius: 36,
@@ -834,7 +892,7 @@ const createStyles = (colors: AppThemeColors, mode: ThemeMode) => {
     paddingRight: 56,
   },
   menuTitle: {
-    color: "#ffffff",
+    color: menuPanelText,
     fontSize: 34,
     fontWeight: "700",
   },
@@ -846,7 +904,7 @@ const createStyles = (colors: AppThemeColors, mode: ThemeMode) => {
     gap: 12,
   },
   menuSectionLabel: {
-    color: "rgba(255,255,255,0.78)",
+    color: menuSectionText,
     fontSize: 13,
     fontWeight: "800",
     marginTop: 8,
@@ -879,7 +937,7 @@ const createStyles = (colors: AppThemeColors, mode: ThemeMode) => {
     height: 11,
     borderRadius: 6,
     borderWidth: 2.5,
-    borderColor: colors.primary,
+    borderColor: menuActionTextColor,
     marginBottom: 4,
   },
   profileIconBody: {
@@ -889,10 +947,10 @@ const createStyles = (colors: AppThemeColors, mode: ThemeMode) => {
     borderTopRightRadius: 12,
     borderWidth: 2.5,
     borderBottomWidth: 0,
-    borderColor: colors.primary,
+    borderColor: menuActionTextColor,
   },
   gearIconText: {
-    color: colors.primary,
+    color: menuActionTextColor,
     fontSize: 42,
     lineHeight: 42,
     fontWeight: "600",
@@ -902,7 +960,7 @@ const createStyles = (colors: AppThemeColors, mode: ThemeMode) => {
     height: 14,
     borderRadius: 8,
     borderWidth: 2.5,
-    borderColor: colors.primary,
+    borderColor: menuActionTextColor,
     transform: [{ rotate: "-42deg" }],
     alignItems: "center",
     justifyContent: "center",
@@ -910,14 +968,14 @@ const createStyles = (colors: AppThemeColors, mode: ThemeMode) => {
   pillDivider: {
     width: 2.5,
     height: 12,
-    backgroundColor: colors.primary,
+    backgroundColor: menuActionTextColor,
   },
   foodIconCircle: {
     width: 28,
     height: 28,
     borderRadius: 14,
     borderWidth: 2.5,
-    borderColor: colors.primary,
+    borderColor: menuActionTextColor,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -926,7 +984,7 @@ const createStyles = (colors: AppThemeColors, mode: ThemeMode) => {
     height: 17,
     borderRadius: 10,
     borderWidth: 2.5,
-    borderColor: colors.primary,
+    borderColor: menuActionTextColor,
     transform: [{ rotate: "35deg" }],
   },
   lockIconShackle: {
@@ -936,7 +994,7 @@ const createStyles = (colors: AppThemeColors, mode: ThemeMode) => {
     borderTopRightRadius: 10,
     borderWidth: 2.5,
     borderBottomWidth: 0,
-    borderColor: colors.primary,
+    borderColor: menuActionTextColor,
     marginBottom: -2,
   },
   lockIconBody: {
@@ -944,19 +1002,19 @@ const createStyles = (colors: AppThemeColors, mode: ThemeMode) => {
     height: 17,
     borderRadius: 5,
     borderWidth: 2.5,
-    borderColor: colors.primary,
+    borderColor: menuActionTextColor,
   },
   circleIcon: {
     width: 28,
     height: 28,
     borderRadius: 14,
     borderWidth: 2.5,
-    borderColor: colors.primary,
+    borderColor: menuActionTextColor,
     alignItems: "center",
     justifyContent: "center",
   },
   menuSymbolText: {
-    color: colors.primary,
+    color: menuActionTextColor,
     fontSize: 20,
     fontWeight: "900",
     lineHeight: 22,
@@ -964,14 +1022,14 @@ const createStyles = (colors: AppThemeColors, mode: ThemeMode) => {
   },
   menuActionText: {
     flex: 1,
-    color: colors.primary,
+    color: menuActionTextColor,
     fontSize: 17,
     fontWeight: "700",
   },
   headerSubtitle: {
     fontSize: 16,
     color: colors.mutedText,
-    marginBottom: 8,
+    marginBottom: 2,
   },
   card: {
     backgroundColor: colors.surface,
@@ -1129,12 +1187,14 @@ const createStyles = (colors: AppThemeColors, mode: ThemeMode) => {
     borderWidth: 1,
     borderColor: colors.border,
     minHeight: 190,
+    position: "relative",
   },
   resultTitle: {
     fontSize: 16,
     fontWeight: "700",
     color: colors.primary,
-    marginRight: 4,
+    lineHeight: 21,
+    maxWidth: "82%",
   },
   resultText: {
     fontSize: 14,
@@ -1147,7 +1207,7 @@ const createStyles = (colors: AppThemeColors, mode: ThemeMode) => {
     marginTop: 10,
   },
   todayDoseBox: {
-    backgroundColor: "#A9BDC8",
+    backgroundColor: todayDoseBlue,
     borderRadius: 24,
     paddingVertical: 20,
     paddingHorizontal: 22,
@@ -1194,7 +1254,7 @@ const createStyles = (colors: AppThemeColors, mode: ThemeMode) => {
     fontSize: 27,
     lineHeight: 33,
     fontWeight: "700",
-    color: "#2F667C",
+    color: todayDoseTextBlue,
     textAlign: "center",
     textShadowColor: "rgba(0,0,0,0.12)",
     textShadowOffset: { width: 0, height: 3 },
@@ -1238,7 +1298,7 @@ const createStyles = (colors: AppThemeColors, mode: ThemeMode) => {
   },
 
   halfTablet: {
-    backgroundColor: "#D89B1D",
+    backgroundColor: mode === "dark" ? inrButtonOrange : "#C77D1A",
   },
 
   emptyTablet: {
@@ -1361,15 +1421,25 @@ const createStyles = (colors: AppThemeColors, mode: ThemeMode) => {
   },
 
   resultHeader: {
-    flexDirection: "row",
-    alignItems: "center",
+    minHeight: 30,
+    justifyContent: "center",
     marginBottom: 14,
+    paddingRight: 28,
+  },
+
+  infoButton: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    width: 28,
+    height: 28,
+    alignItems: "center",
+    justifyContent: "center",
   },
 
   infoIcon: {
     fontSize: 16,
     color: colors.primary,
-    marginLeft: 6,
   },
 
   modalOverlay: {

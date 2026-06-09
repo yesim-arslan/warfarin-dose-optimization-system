@@ -3,11 +3,14 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { AppThemeColors, useTheme } from "../theme/ThemeContext";
 import { requestHomeMenuOpen } from "../navigation/menuReturn";
+import { useLanguage } from "../i18n/LanguageContext";
 
 export default function AboutScreen() {
   const navigation = useNavigation<any>();
   const { colors } = useTheme();
+  const { language, t } = useLanguage();
   const styles = createStyles(colors);
+  const isEnglish = language === "en";
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
@@ -18,34 +21,35 @@ export default function AboutScreen() {
           navigation.goBack();
         }}
       >
-        <Text style={styles.backButtonText}>← Geri</Text>
+        <Text style={styles.backButtonText}>{t("back")}</Text>
       </Pressable>
 
-      <Text style={styles.title}>Hakkında</Text>
+      <Text style={styles.title}>{t("about")}</Text>
 
       <View style={styles.card}>
         <Text style={styles.appName}>
           Personalized INR Monitoring & Warfarin Dose Optimization System
         </Text>
-        <Text style={styles.metaText}>Geliştirici: Yeşim Arslan</Text>
-
-        <Text style={styles.paragraph}>
-          Bu uygulama, Warfarin kullanan bireylerin INR değerlerini takip
-          etmelerine, geçmiş INR kayıtlarını görüntülemelerine ve haftalık doz
-          planlarını düzenli şekilde izlemelerine yardımcı olmak amacıyla
-          geliştirilmiştir.
+        <Text style={styles.metaText}>
+          {isEnglish ? "Developer" : "Geliştirici"}: Yeşim Arslan
         </Text>
 
         <Text style={styles.paragraph}>
-          Uygulama içerisindeki doz önerileri ve uyarılar yalnızca bilgilendirme
-          ve karar desteği amacı taşır. Bu uygulama doktor muayenesinin,
-          tıbbi teşhisin veya profesyonel sağlık hizmetinin yerine geçmez.
+          {isEnglish
+            ? "This application was developed to help individuals using Warfarin track their INR values, view previous INR records, and follow weekly dose plans in an organized way."
+            : "Bu uygulama, Warfarin kullanan bireylerin INR değerlerini takip etmelerine, geçmiş INR kayıtlarını görüntülemelerine ve haftalık doz planlarını düzenli şekilde izlemelerine yardımcı olmak amacıyla geliştirilmiştir."}
         </Text>
 
         <Text style={styles.paragraph}>
-          INR değerleriniz beklenmeyen seviyelerdeyse veya kendinizi iyi
-          hissetmiyorsanız doktorunuza ya da en yakın sağlık kuruluşuna
-          başvurunuz.
+          {isEnglish
+            ? "Dose recommendations and warnings in the application are intended only for information and decision support. This application does not replace physician examination, medical diagnosis, or professional healthcare."
+            : "Uygulama içerisindeki doz önerileri ve uyarılar yalnızca bilgilendirme ve karar desteği amacı taşır. Bu uygulama doktor muayenesinin, tıbbi teşhisin veya profesyonel sağlık hizmetinin yerine geçmez."}
+        </Text>
+
+        <Text style={styles.paragraph}>
+          {isEnglish
+            ? "If your INR values are at unexpected levels or you do not feel well, contact your doctor or the nearest healthcare institution."
+            : "INR değerleriniz beklenmeyen seviyelerdeyse veya kendinizi iyi hissetmiyorsanız doktorunuza ya da en yakın sağlık kuruluşuna başvurunuz."}
         </Text>
       </View>
     </ScrollView>

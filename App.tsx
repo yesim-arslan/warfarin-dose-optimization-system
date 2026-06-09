@@ -4,17 +4,21 @@ import { NavigationContainer } from "@react-navigation/native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import AppNavigator from "./src/navigation/AppNavigator";
 import { ThemeProvider, useTheme } from "./src/theme/ThemeContext";
+import { LanguageProvider, useLanguage } from "./src/i18n/LanguageContext";
 
 export default function App() {
   return (
     <ThemeProvider>
-      <AppContent />
+      <LanguageProvider>
+        <AppContent />
+      </LanguageProvider>
     </ThemeProvider>
   );
 }
 
 function AppContent() {
   const { colors, mode } = useTheme();
+  const { t } = useLanguage();
   const styles = createStyles(colors, mode);
 
   return (
@@ -23,7 +27,7 @@ function AppContent() {
         <SafeAreaView edges={["top"]} style={styles.warningSafeArea}>
           <View style={styles.warningBanner}>
             <Text style={styles.warningText}>
-              Bu uygulama bir doktor uygulaması değildir. Doğru bilgi için doktorunuza başvurunuz.
+              {t("appDisclaimer")}
             </Text>
           </View>
         </SafeAreaView>

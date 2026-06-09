@@ -5,6 +5,7 @@ import { auth } from "../services/firebase";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { RootStackParamList } from "../navigation/AppNavigator";
 import { AppThemeColors, useTheme } from "../theme/ThemeContext";
+import { useLanguage } from "../i18n/LanguageContext";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Login">;
 
@@ -12,6 +13,7 @@ export default function LoginScreen({ navigation }: Props) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const { colors } = useTheme();
+  const { t } = useLanguage();
   const styles = createStyles(colors);
 
   const getLoginErrorMessage = (error: any) => {
@@ -19,37 +21,37 @@ export default function LoginScreen({ navigation }: Props) {
       error?.code === "auth/invalid-credential" ||
       error?.code === "auth/user-not-found"
     ) {
-      return "Bu bilgilerle kayıtlı bir hesap bulunamadı. Hesabın silinmiş olabilir. Devam etmek için yeni hesap oluştur.";
+      return t("loginNotFound");
     }
 
     if (error?.code === "auth/wrong-password") {
-      return "Şifre hatalı. Lütfen şifreni kontrol edip tekrar dene.";
+      return t("loginWrongPassword");
     }
 
     if (error?.code === "auth/invalid-email") {
-      return "Lütfen geçerli bir e-posta adresi gir.";
+      return t("loginInvalidEmail");
     }
 
     if (error?.code === "auth/too-many-requests") {
-      return "Çok fazla deneme yapıldı. Lütfen biraz bekleyip tekrar dene.";
+      return t("loginTooMany");
     }
 
-    return "Giriş yapılamadı. Bilgilerini kontrol edip tekrar dene.";
+    return t("loginFailed");
   };
 
   const handleLogin = async () => {
     try {
       await signInWithEmailAndPassword(auth, email.trim(), password);
-      Alert.alert("OK", "Giriş başarılı");
+      Alert.alert(t("ok"), t("loginSuccess"));
     } catch (e: any) {
-      Alert.alert("Hata", getLoginErrorMessage(e));
+      Alert.alert(t("error"), getLoginErrorMessage(e));
       console.log(e);
     }
   };
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Giriş Yap</Text>
+      <Text style={styles.title}>{t("login")}</Text>
 
       <TextInput
         style={styles.input}
@@ -57,7 +59,7 @@ export default function LoginScreen({ navigation }: Props) {
         onChangeText={setEmail}
         autoCapitalize="none"
         keyboardType="email-address"
-        placeholder="Email"
+        placeholder={t("email")}
         placeholderTextColor={colors.mutedText}
       />
       <TextInput
@@ -65,16 +67,16 @@ export default function LoginScreen({ navigation }: Props) {
         value={password}
         onChangeText={setPassword}
         secureTextEntry
-        placeholder="Şifre"
+        placeholder={t("password")}
         placeholderTextColor={colors.mutedText}
       />
 
       <Pressable style={styles.button} onPress={handleLogin}>
-        <Text style={styles.buttonText}>Giriş Yap</Text>
+        <Text style={styles.buttonText}>{t("login")}</Text>
       </Pressable>
 
       <Pressable onPress={() => navigation.navigate("MedicalConsent")}>
-        <Text style={styles.link}>Hesabın yok mu? Kayıt ol</Text>
+        <Text style={styles.link}>{t("noAccount")}</Text>
       </Pressable>
     </View>
   );
